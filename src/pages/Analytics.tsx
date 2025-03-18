@@ -27,7 +27,8 @@ import {
   TrendingUp, 
   TrendingDown,
   Calendar,
-  Loader2
+  Loader2,
+  MessageSquareText
 } from 'lucide-react';
 import { zohoService } from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
