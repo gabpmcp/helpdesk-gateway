@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Mail, Lock, Github, Google } from 'lucide-react';
+import { Loader2, Mail, Lock, Github, CircleUser } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export const LoginForm: React.FC = () => {
@@ -131,7 +131,7 @@ export const LoginForm: React.FC = () => {
 
           <div className="mt-4 flex gap-2">
             <Button variant="outline" className="w-full">
-              <Google className="mr-2 h-4 w-4" />
+              <CircleUser className="mr-2 h-4 w-4" />
               Google
             </Button>
             <Button variant="outline" className="w-full">
