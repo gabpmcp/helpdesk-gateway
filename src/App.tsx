@@ -11,6 +11,8 @@ import Login from "./pages/Login";
 import Tickets from "./pages/Tickets";
 import TicketDetail from "./pages/TicketDetail";
 import CreateTicket from "./pages/CreateTicket";
+import KnowledgeBase from "./pages/KnowledgeBase";
+import Analytics from "./pages/Analytics";
 import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
 import Chat from "./pages/Chat";
@@ -34,6 +36,8 @@ const App = () => (
             <Route path="/tickets" element={<Tickets />} />
             <Route path="/tickets/new" element={<CreateTicket />} />
             <Route path="/tickets/:id" element={<TicketDetail />} />
+            <Route path="/knowledge-base" element={<KnowledgeBase />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />

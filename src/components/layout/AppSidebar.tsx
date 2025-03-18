@@ -131,7 +131,7 @@ export const AppSidebar: React.FC = () => {
       
       <SidebarFooter className="px-4 py-3">
         <div className="flex flex-col gap-3">
-          <NavLink to="/support" className="flex items-center text-sm text-muted-foreground hover:text-foreground">
+          <NavLink to="/knowledge-base" className="flex items-center text-sm text-muted-foreground hover:text-foreground">
             <HelpCircle className="h-4 w-4 mr-2" />
             <span>Help & Support</span>
           </NavLink>
