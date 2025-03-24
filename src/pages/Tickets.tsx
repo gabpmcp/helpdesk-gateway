@@ -1,5 +1,5 @@
-
 import React, { useEffect, useState } from 'react';
+import { Map, List, fromJS } from 'immutable';
 import { useNavigate } from 'react-router-dom';
 import { 
   Card, 
@@ -33,9 +33,17 @@ import {
   SortAsc, 
   SortDesc 
 } from 'lucide-react';
-import { zohoService } from '@/services/zohoService';
+import zohoService from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { ZohoCategory, ZohoTicket } from '@/core/models/zoho.types';
+
+// Type definitions for immutable structures
+type ImmutableTicket = Map<string, any>;
+type ImmutableTicketList = List<ImmutableTicket>;
+type ImmutableCategory = Map<string, any>;
+type ImmutableCategoryList = List<ImmutableCategory>;
+type ImmutableFilters = Map<string, string>;
 
 // Status badge component
 const StatusBadge = ({ status }: { status: string }) => {
@@ -72,77 +80,90 @@ const PriorityIndicator = ({ priority }: { priority: string }) => {
 const Tickets: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [tickets, setTickets] = useState<any[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({
+  const [tickets, setTickets] = useState<ImmutableTicketList>(List([]));
+  const [categories, setCategories] = useState<ImmutableCategoryList>(List([]));
+  const [loading, setLoading] = useState<boolean>(true);
+  const [filters, setFilters] = useState<ImmutableFilters>(Map({
     status: '',
     priority: '',
     category: '',
     search: '',
     sortBy: 'modifiedTime',
     sortOrder: 'desc'
-  });
+  }));
 
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const categoriesData = await zohoService.getCategories();
-        setCategories(categoriesData);
-      } catch (error) {
-        console.error('Failed to fetch categories:', error);
-      }
-    };
+    // Functional approach to fetch categories
+    const fetchCategories = () => 
+      Promise.resolve(zohoService.getCategories())
+        .then(categoriesData => {
+          setCategories(fromJS(categoriesData));
+          return categoriesData;
+        })
+        .catch(error => {
+          console.error('Failed to fetch categories:', error);
+          return Promise.reject(error);
+        });
 
     fetchCategories();
   }, []);
 
   useEffect(() => {
-    const fetchTickets = async () => {
+    // Functional approach to fetch tickets
+    const fetchTickets = () => {
       setLoading(true);
-      try {
-        const result = await zohoService.getTickets(filters);
-        setTickets(result.tickets);
-      } catch (error) {
-        toast({
-          title: "Error loading tickets",
-          description: "Could not load tickets. Please try again later.",
-          variant: "destructive",
+      
+      // Convert immutable filters to regular object for API compatibility
+      const filtersObj = filters.toJS();
+      
+      return Promise.resolve(zohoService.getTickets(filtersObj))
+        .then(result => {
+          setTickets(fromJS(result.tickets));
+          return result;
+        })
+        .catch(error => {
+          toast({
+            title: "Error loading tickets",
+            description: "Could not load tickets. Please try again later.",
+            variant: "destructive",
+          });
+          console.error("Ticket loading error:", error);
+          return Promise.reject(error);
+        })
+        .finally(() => {
+          setLoading(false);
         });
-        console.error("Ticket loading error:", error);
-      } finally {
-        setLoading(false);
-      }
     };
 
     fetchTickets();
   }, [filters, toast]);
 
+  // Pure function to handle search input change
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilters({
-      ...filters,
-      search: e.target.value
-    });
+    setFilters(prevFilters => prevFilters.set('search', e.target.value));
   };
 
+  // Pure function to handle filter changes
   const handleFilterChange = (key: string, value: string) => {
-    setFilters({
-      ...filters,
-      [key]: value
-    });
+    setFilters(prevFilters => prevFilters.set(key, value));
   };
 
+  // Pure function to toggle sort order
   const toggleSort = (field: string) => {
-    setFilters({
-      ...filters,
-      sortBy: field,
-      sortOrder: filters.sortBy === field && filters.sortOrder === 'asc' ? 'desc' : 'asc'
+    setFilters(prevFilters => {
+      const currentSortBy = prevFilters.get('sortBy', '');
+      const currentSortOrder = prevFilters.get('sortOrder', 'asc');
+      
+      return prevFilters
+        .set('sortBy', field)
+        .set('sortOrder', currentSortBy === field && currentSortOrder === 'asc' ? 'desc' : 'asc');
     });
   };
 
+  // Pure function for sort icon component
   const SortIcon = ({ field }: { field: string }) => {
-    if (filters.sortBy !== field) return null;
-    return filters.sortOrder === 'asc' ? 
+    if (filters.get('sortBy') !== field) return null;
+    return filters.get('sortOrder') === 'asc' ? 
       <SortAsc className="inline h-4 w-4 ml-1" /> : 
       <SortDesc className="inline h-4 w-4 ml-1" />;
   };
@@ -176,13 +197,13 @@ const Tickets: React.FC = () => {
                 type="search" 
                 placeholder="Search tickets..." 
                 className="pl-8"
-                value={filters.search}
+                value={filters.get('search', '')}
                 onChange={handleSearch}
               />
             </div>
             <div className="flex flex-col sm:flex-row gap-4 w-full md:flex-1">
               <Select 
-                value={filters.status} 
+                value={filters.get('status', '')} 
                 onValueChange={(value) => handleFilterChange('status', value)}
               >
                 <SelectTrigger className="w-full sm:w-[180px]">
@@ -198,9 +219,9 @@ const Tickets: React.FC = () => {
                   <SelectItem value="closed">Closed</SelectItem>
                 </SelectContent>
               </Select>
-
+              
               <Select 
-                value={filters.priority} 
+                value={filters.get('priority', '')} 
                 onValueChange={(value) => handleFilterChange('priority', value)}
               >
                 <SelectTrigger className="w-full sm:w-[180px]">
@@ -214,9 +235,9 @@ const Tickets: React.FC = () => {
                   <SelectItem value="urgent">Urgent</SelectItem>
                 </SelectContent>
               </Select>
-
+              
               <Select 
-                value={filters.category} 
+                value={filters.get('category', '')} 
                 onValueChange={(value) => handleFilterChange('category', value)}
               >
                 <SelectTrigger className="w-full sm:w-[180px]">
@@ -225,22 +246,33 @@ const Tickets: React.FC = () => {
                 <SelectContent>
                   <SelectItem value="">All Categories</SelectItem>
                   {categories.map(category => (
-                    <SelectItem key={category} value={category}>{category}</SelectItem>
+                    <SelectItem key={category.get('id')} value={category.get('id')}>
+                      {category.get('name')}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
-
+          
           {loading ? (
-            <div className="flex justify-center py-8">
+            <div className="flex justify-center items-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : tickets.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Filter className="h-12 w-12 mx-auto mb-4 opacity-20" />
-              <h3 className="text-lg font-medium">No tickets found</h3>
-              <p>Try adjusting your filters or create a new ticket.</p>
+          ) : tickets.size === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">No tickets found</p>
+              <Button className="mt-4" onClick={() => setFilters(Map({
+                status: '',
+                priority: '',
+                category: '',
+                search: '',
+                sortBy: 'modifiedTime',
+                sortOrder: 'desc'
+              }))}>
+                <Filter className="h-4 w-4 mr-2" />
+                Clear Filters
+              </Button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -248,7 +280,7 @@ const Tickets: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead 
-                      className="w-[100px] cursor-pointer"
+                      className="cursor-pointer"
                       onClick={() => toggleSort('id')}
                     >
                       ID <SortIcon field="id" />
@@ -259,59 +291,35 @@ const Tickets: React.FC = () => {
                     >
                       Subject <SortIcon field="subject" />
                     </TableHead>
-                    <TableHead 
-                      className="cursor-pointer"
-                      onClick={() => toggleSort('status')}
-                    >
-                      Status <SortIcon field="status" />
-                    </TableHead>
-                    <TableHead 
-                      className="cursor-pointer"
-                      onClick={() => toggleSort('priority')}
-                    >
-                      Priority <SortIcon field="priority" />
-                    </TableHead>
-                    <TableHead 
-                      className="cursor-pointer"
-                      onClick={() => toggleSort('category')}
-                    >
-                      Category <SortIcon field="category" />
-                    </TableHead>
-                    <TableHead 
-                      className="cursor-pointer"
-                      onClick={() => toggleSort('createdTime')}
-                    >
-                      Created <SortIcon field="createdTime" />
-                    </TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Category</TableHead>
                     <TableHead 
                       className="cursor-pointer"
                       onClick={() => toggleSort('modifiedTime')}
                     >
-                      Updated <SortIcon field="modifiedTime" />
+                      Last Updated <SortIcon field="modifiedTime" />
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tickets.map((ticket) => (
+                  {tickets.map(ticket => (
                     <TableRow 
-                      key={ticket.id}
-                      className="cursor-pointer hover:bg-secondary/50"
-                      onClick={() => navigate(`/tickets/${ticket.id}`)}
+                      key={ticket.get('id')}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/tickets/${ticket.get('id')}`)}
                     >
-                      <TableCell className="font-medium">#{ticket.id}</TableCell>
-                      <TableCell className="max-w-[300px] truncate">{ticket.subject}</TableCell>
+                      <TableCell className="font-medium">#{ticket.get('id')}</TableCell>
+                      <TableCell>{ticket.get('subject')}</TableCell>
                       <TableCell>
-                        <StatusBadge status={ticket.status} />
+                        <StatusBadge status={ticket.get('status')} />
                       </TableCell>
                       <TableCell>
-                        <PriorityIndicator priority={ticket.priority} />
+                        <PriorityIndicator priority={ticket.get('priority')} />
                       </TableCell>
-                      <TableCell>{ticket.category}</TableCell>
+                      <TableCell>{ticket.get('category')}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {format(new Date(ticket.createdTime), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {format(new Date(ticket.modifiedTime), 'MMM d, yyyy')}
+                        {format(new Date(ticket.get('modifiedTime')), 'MMM d, yyyy')}
                       </TableCell>
                     </TableRow>
                   ))}

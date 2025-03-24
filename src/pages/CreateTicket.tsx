@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -21,19 +20,22 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { ArrowLeft, Loader2, Paperclip } from 'lucide-react';
-import { zohoService } from '@/services/zohoService';
+import zohoService from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
+import { ZohoCategory, ZohoTicketInput } from '@/core/models/zoho.types';
 
 const CreateTicket: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<ZohoCategory[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [ticket, setTicket] = useState({
+  const [ticket, setTicket] = useState<ZohoTicketInput>({
     subject: '',
     description: '',
     priority: 'medium',
-    category: ''
+    category: '',
+    status: 'new', 
+    dueDate: '' 
   });
 
   useEffect(() => {
@@ -44,7 +46,7 @@ const CreateTicket: React.FC = () => {
         
         // Set the first category as default if available
         if (categoriesData.length > 0) {
-          setTicket(prev => ({ ...prev, category: categoriesData[0] }));
+          setTicket(prev => ({ ...prev, category: categoriesData[0].id }));
         }
       } catch (error) {
         console.error('Failed to fetch categories:', error);
@@ -83,7 +85,12 @@ const CreateTicket: React.FC = () => {
     setIsSubmitting(true);
     
     try {
-      const newTicket = await zohoService.createTicket(ticket);
+      const ticketInput: ZohoTicketInput = {
+        ...ticket,
+        dueDate: ticket.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      };
+      
+      const newTicket = await zohoService.createTicket(ticketInput);
       
       toast({
         title: "Ticket created",
@@ -148,7 +155,7 @@ const CreateTicket: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map(category => (
-                      <SelectItem key={category} value={category}>{category}</SelectItem>
+                      <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

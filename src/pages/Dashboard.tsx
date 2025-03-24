@@ -1,9 +1,8 @@
-
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
+import { Map, List } from 'immutable';
 import { 
   Card, 
   CardContent, 
-  CardDescription, 
   CardHeader, 
   CardTitle 
 } from '@/components/ui/card';
@@ -13,48 +12,87 @@ import {
   Activity, AlertCircle, CheckCircle, Clock, Inbox, Plus, RefreshCw 
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { zohoService } from '@/services/zohoService';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { fetchDashboardStats } from '@/store/slices/dashboardSlice';
+import { configuredFetchDashboardStats } from '@/shell/config/services.config';
+import { ImmutableDashboardStats } from '@/core/models/zoho.types';
+
+// Define types for immutable structures
+type ImmutableActivity = Map<string, any>;
+
+// Define the expected dashboard state shape
+interface DashboardReduxState {
+  dashboard: {
+    stats: ImmutableDashboardStats | null;
+    loading: boolean;
+    error: string | null;
+  }
+}
 
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useAppDispatch();
+  
+  // Use type assertions to handle the Redux state
+  const stats = useAppSelector((state: any) => state.dashboard.stats);
+  const loading = useAppSelector((state: any) => state.dashboard.loading);
+  const error = useAppSelector((state: any) => state.dashboard.error);
+  
   const { toast } = useToast();
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const data = await zohoService.getDashboardStats();
-        setStats(data);
-      } catch (error) {
+    // Dispatch the async thunk with the configured service function
+    dispatch(fetchDashboardStats(configuredFetchDashboardStats))
+      .unwrap()
+      .catch(error => {
         toast({
           title: "Error loading dashboard",
           description: "Could not load dashboard data. Please try again later.",
           variant: "destructive",
         });
         console.error("Dashboard data error:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+      });
+  }, [dispatch, toast]);
 
-    fetchDashboardData();
-  }, [toast]);
+  // Pure function to format data for priority pie chart
+  const getPriorityChartData = (statsData: ImmutableDashboardStats | null): List<Map<string, any>> => {
+    if (!statsData) return List();
+    
+    const ticketsByPriority = statsData.get('ticketsByPriority', Map<string, number>());
+    return ticketsByPriority.entrySeq()
+      .map(([name, value]) => Map({ name, value }))
+      .toList();
+  };
 
-  // Format data for priority pie chart
-  const priorityChartData = stats ? Object.entries(stats.ticketsByPriority).map(([name, value]) => ({
-    name, value
-  })) : [];
+  const PRIORITY_COLORS = List(['#3B82F6', '#F59E0B', '#F97316', '#EF4444']);
 
-  const PRIORITY_COLORS = ['#3B82F6', '#F59E0B', '#F97316', '#EF4444'];
+  // Pure function to format data for category bar chart
+  const getCategoryChartData = (statsData: ImmutableDashboardStats | null): List<Map<string, any>> => {
+    if (!statsData) return List();
+    
+    const ticketsByCategory = statsData.get('ticketsByCategory', Map<string, number>());
+    return ticketsByCategory.entrySeq()
+      .map(([name, value]) => Map({ name, value }))
+      .toList();
+  };
 
-  // Format data for category bar chart
-  const categoryChartData = stats ? Object.entries(stats.ticketsByCategory).map(([name, value]) => ({
-    name, value
-  })) : [];
+  // Convert immutable data to format required by recharts
+  const priorityChartData = getPriorityChartData(stats).toJS();
+  const categoryChartData = getCategoryChartData(stats).toJS();
+
+  const handleRefresh = () => {
+    dispatch(fetchDashboardStats(configuredFetchDashboardStats));
+  };
+
+  // Helper function to safely get activity list
+  const getActivityList = (): List<ImmutableActivity> => {
+    if (!stats) return List<ImmutableActivity>();
+    const activities = stats.getIn(['recentActivity'], List());
+    return activities as List<ImmutableActivity>;
+  };
 
   return (
     <div className="space-y-6">
@@ -66,7 +104,7 @@ const Dashboard: React.FC = () => {
           </p>
         </div>
         <div className="mt-4 md:mt-0 space-x-2">
-          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          <Button variant="outline" size="sm" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
@@ -100,7 +138,7 @@ const Dashboard: React.FC = () => {
               <CardContent>
                 <div className="flex items-center">
                   <Inbox className="h-5 w-5 text-muted-foreground mr-2" />
-                  <div className="text-2xl font-bold">{stats?.totalTickets || 0}</div>
+                  <div className="text-2xl font-bold">{String(stats?.getIn(['totalTickets'], 0))}</div>
                 </div>
               </CardContent>
             </Card>
@@ -112,7 +150,7 @@ const Dashboard: React.FC = () => {
               <CardContent>
                 <div className="flex items-center">
                   <AlertCircle className="h-5 w-5 text-yellow-500 mr-2" />
-                  <div className="text-2xl font-bold">{stats?.openTickets || 0}</div>
+                  <div className="text-2xl font-bold">{String(stats?.getIn(['openTickets'], 0))}</div>
                 </div>
               </CardContent>
             </Card>
@@ -124,7 +162,7 @@ const Dashboard: React.FC = () => {
               <CardContent>
                 <div className="flex items-center">
                   <Clock className="h-5 w-5 text-muted-foreground mr-2" />
-                  <div className="text-2xl font-bold">{stats?.avgResolutionTime || 'N/A'}</div>
+                  <div className="text-2xl font-bold">{String(stats?.getIn(['avgResolutionTime'], 'N/A'))}</div>
                 </div>
               </CardContent>
             </Card>
@@ -136,110 +174,112 @@ const Dashboard: React.FC = () => {
               <CardContent>
                 <div className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                  <div className="text-2xl font-bold">{stats?.slaCompliance || 'N/A'}</div>
+                  <div className="text-2xl font-bold">{String(stats?.getIn(['slaCompliance'], 'N/A'))}</div>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
             <Card>
               <CardHeader>
                 <CardTitle>Tickets by Priority</CardTitle>
-                <CardDescription>
-                  Distribution of tickets based on priority levels
-                </CardDescription>
               </CardHeader>
-              <CardContent className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={priorityChartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    >
-                      {priorityChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={PRIORITY_COLORS[index % PRIORITY_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+              <CardContent>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={priorityChartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      >
+                        {priorityChartData.map((entry, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={PRIORITY_COLORS.get(index % PRIORITY_COLORS.size, '#8884d8')} 
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
-
+            
             <Card>
               <CardHeader>
                 <CardTitle>Tickets by Category</CardTitle>
-                <CardDescription>
-                  Number of tickets in each category
-                </CardDescription>
               </CardHeader>
-              <CardContent className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={categoryChartData}
-                    margin={{
-                      top: 5,
-                      right: 30,
-                      left: 20,
-                      bottom: 5,
-                    }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="value" fill="#3B82F6" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <CardContent>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={categoryChartData}
+                      layout="vertical"
+                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        width={100}
+                        tick={{ fontSize: 12 }}
+                      />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="value" fill="#3B82F6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>
-                Latest updates on your tickets
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {stats?.recentActivity.map((activity: any) => (
-                  <div key={activity.id} className="flex items-start space-x-4">
-                    <div className="mt-0.5">
-                      <Activity className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{activity.performedBy}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {activity.type === 'comment' ? 'Comment' : 
-                           activity.type === 'status_change' ? 'Status Update' : 'New Ticket'}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">
-                          {new Date(activity.performedTime).toLocaleString()}
-                        </span>
+          <div className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {getActivityList().size > 0 ? (
+                    getActivityList().map((activity: ImmutableActivity, index: number) => (
+                      <div key={index} className="flex items-start">
+                        <Activity className="h-5 w-5 text-muted-foreground mt-0.5 mr-3" />
+                        <div>
+                          <p className="font-medium">{String(activity.get('description', ''))}</p>
+                          <div className="flex items-center text-sm text-muted-foreground">
+                            <span>{String(activity.get('time', ''))}</span>
+                            <span className="mx-2">•</span>
+                            <Badge variant="outline">{String(activity.get('type', ''))}</Badge>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">Ticket #{activity.ticketId}:</span> {activity.subject}
-                      </p>
-                      <p className="text-sm">{activity.content}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                    )).toJS()
+                  ) : (
+                    <p className="text-muted-foreground">No recent activity</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <strong className="font-bold">Error: </strong>
+          <span className="block sm:inline">{error}</span>
+        </div>
       )}
     </div>
   );

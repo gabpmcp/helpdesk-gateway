@@ -1,15 +1,12 @@
-import { Map, List, fromJS } from 'immutable';
-import { createZohoClient } from '../shell/externalClients/zohoClient';
+import { Map, List } from 'immutable';
 import {
   transformTicket,
   transformComment,
   transformCategory,
   transformDashboardStats,
-  filterTickets,
-  sortTicketsByDate,
   processTickets,
   toJS
-} from '../core/logic/zohoLogic';
+} from '../logic/zohoLogic';
 import {
   ZohoTicket,
   ZohoTicketInput,
@@ -23,26 +20,37 @@ import {
   ImmutableCategory,
   ImmutableDashboardStats,
   ImmutableFilters,
-} from '../core/models/zoho.types';
-import { toImmutableTicket, toImmutableComment, toImmutableCategory, toImmutableFilters } from '../core/models/zoho.types';
-
-// Create the Zoho client
-const zohoClient = createZohoClient();
-
-// Service functions that combine pure logic with API calls
-const authenticateUser = (email: string, password: string): Promise<string> =>
-  zohoClient.authenticateUser(email)(password)
-    .then(response => response.get('access_token', ''));
+} from '../models/zoho.types';
 
 // Interface for the response structure that includes tickets
-interface TicketsResponse {
+export interface TicketsResponse {
   tickets: ZohoTicket[];
   total: number;
   page: number;
 }
 
-const getTickets = (filters: ZohoFilters = {}): Promise<TicketsResponse> =>
-  zohoClient.fetchTickets(filters)
+/**
+ * Pure function to authenticate a user
+ * 
+ * @param authenticateUserFn - Function to authenticate with Zoho
+ * @returns A function that takes email and password and returns a Promise with the access token
+ */
+export const authenticateUser = (
+  authenticateUserFn: (email: string) => (password: string) => Promise<any>
+) => (email: string, password: string): Promise<string> =>
+  authenticateUserFn(email)(password)
+    .then(response => response.get('access_token', ''));
+
+/**
+ * Pure function to get tickets
+ * 
+ * @param fetchTicketsFn - Function to fetch tickets from Zoho
+ * @returns A function that takes filters and returns a Promise with tickets
+ */
+export const getTickets = (
+  fetchTicketsFn: (filters: ZohoFilters) => Promise<any>
+) => (filters: ZohoFilters = {}): Promise<TicketsResponse> =>
+  fetchTicketsFn(filters)
     .then(response => {
       // Convert response to immutable structure
       const immutableTickets = List<ImmutableTicket>(
@@ -63,8 +71,16 @@ const getTickets = (filters: ZohoFilters = {}): Promise<TicketsResponse> =>
       };
     });
 
-const getTicketById = (id: string): Promise<ZohoTicket> =>
-  zohoClient.fetchTicketById(id)
+/**
+ * Pure function to get a ticket by ID
+ * 
+ * @param fetchTicketByIdFn - Function to fetch a ticket by ID from Zoho
+ * @returns A function that takes an ID and returns a Promise with the ticket
+ */
+export const getTicketById = (
+  fetchTicketByIdFn: (id: string) => Promise<any>
+) => (id: string): Promise<ZohoTicket> =>
+  fetchTicketByIdFn(id)
     .then(response => {
       // Convert response to immutable structure and transform
       const immutableTicket = transformTicket(response.get('data'));
@@ -73,8 +89,16 @@ const getTicketById = (id: string): Promise<ZohoTicket> =>
       return toJS<ZohoTicket>(immutableTicket);
     });
 
-const createTicket = (ticketData: ZohoTicketInput): Promise<ZohoTicket> =>
-  zohoClient.createTicket(ticketData)
+/**
+ * Pure function to create a ticket
+ * 
+ * @param createTicketFn - Function to create a ticket in Zoho
+ * @returns A function that takes ticket data and returns a Promise with the created ticket
+ */
+export const createTicket = (
+  createTicketFn: (ticketData: ZohoTicketInput) => Promise<any>
+) => (ticketData: ZohoTicketInput): Promise<ZohoTicket> =>
+  createTicketFn(ticketData)
     .then(response => {
       // Convert response to immutable structure and transform
       const immutableTicket = transformTicket(response.get('data'));
@@ -83,8 +107,16 @@ const createTicket = (ticketData: ZohoTicketInput): Promise<ZohoTicket> =>
       return toJS<ZohoTicket>(immutableTicket);
     });
 
-const addComment = (ticketId: string, commentData: ZohoCommentInput): Promise<ZohoComment> =>
-  zohoClient.addComment(ticketId)(commentData)
+/**
+ * Pure function to add a comment to a ticket
+ * 
+ * @param addCommentFn - Function to add a comment to a ticket in Zoho
+ * @returns A function that takes a ticket ID and comment data and returns a Promise with the created comment
+ */
+export const addComment = (
+  addCommentFn: (ticketId: string) => (commentData: ZohoCommentInput) => Promise<any>
+) => (ticketId: string, commentData: ZohoCommentInput): Promise<ZohoComment> =>
+  addCommentFn(ticketId)(commentData)
     .then(response => {
       // Convert response to immutable structure and transform
       const immutableComment = transformComment(response.get('data'));
@@ -93,8 +125,16 @@ const addComment = (ticketId: string, commentData: ZohoCommentInput): Promise<Zo
       return toJS<ZohoComment>(immutableComment);
     });
 
-const getCategories = (): Promise<ZohoCategory[]> =>
-  zohoClient.fetchCategories()
+/**
+ * Pure function to get categories
+ * 
+ * @param fetchCategoriesFn - Function to fetch categories from Zoho
+ * @returns A function that returns a Promise with categories
+ */
+export const getCategories = (
+  fetchCategoriesFn: () => Promise<any>
+) => (): Promise<ZohoCategory[]> =>
+  fetchCategoriesFn()
     .then(response => {
       // Convert response to immutable structure
       const immutableCategories = List(
@@ -107,8 +147,16 @@ const getCategories = (): Promise<ZohoCategory[]> =>
       return toJS<ZohoCategory[]>(immutableCategories);
     });
 
-const getDashboardStats = (): Promise<ZohoDashboardStats> =>
-  zohoClient.fetchDashboardStats()
+/**
+ * Pure function to get dashboard stats
+ * 
+ * @param fetchDashboardStatsFn - Function to fetch dashboard stats from Zoho
+ * @returns A function that returns a Promise with dashboard stats
+ */
+export const getDashboardStats = (
+  fetchDashboardStatsFn: () => Promise<any>
+) => (): Promise<ZohoDashboardStats> =>
+  fetchDashboardStatsFn()
     .then(response => {
       // Convert response to immutable structure and transform
       const immutableStats = transformDashboardStats(response.get('data'));
@@ -151,16 +199,3 @@ const getDashboardStats = (): Promise<ZohoDashboardStats> =>
       // Convert back to JS for API compatibility
       return toJS<ZohoDashboardStats>(enhancedStats);
     });
-
-// Export the service functions
-const zohoService = {
-  authenticateUser,
-  getTickets,
-  getTicketById,
-  createTicket,
-  addComment,
-  getCategories,
-  getDashboardStats
-};
-
-export default zohoService;

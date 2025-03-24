@@ -30,7 +30,7 @@ import {
   Loader2,
   MessageSquareText
 } from 'lucide-react';
-import { zohoService } from '@/services/zohoService';
+import zohoService from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
 import {
   BarChart,

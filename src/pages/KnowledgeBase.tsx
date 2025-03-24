@@ -23,7 +23,7 @@ import {
   HelpCircle,
   Loader2
 } from 'lucide-react';
-import { zohoService } from '@/services/zohoService';
+import zohoService from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
 
 // Type definitions
