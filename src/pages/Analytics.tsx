@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -12,10 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Select, 
   SelectContent, 
-  SelectItem, 
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import { SafeSelectItem } from "@/components/ui/safe-select-item";
 import { Separator } from '@/components/ui/separator';
 import { 
   BarChart3, 
@@ -98,28 +97,39 @@ const Analytics: React.FC = () => {
   const [timeRange, setTimeRange] = useState('month');
   const [stats, setStats] = useState<any>(null);
   
-  useEffect(() => {
-    const fetchAnalyticsData = async () => {
+  const fetchAnalyticsData = async (range = timeRange) => {
+    try {
       setLoading(true);
-      try {
-        // In a real implementation, this would fetch data from the Zoho API
-        // For now, we'll use mock data from the zohoService
-        const dashboardStats = await zohoService.getDashboardStats();
-        setStats(dashboardStats);
-      } catch (error) {
-        toast({
-          title: "Error loading analytics",
-          description: "Could not load analytics data. Please try again later.",
-          variant: "destructive",
-        });
-        console.error("Analytics loading error:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
+      // getDashboardStats no acepta parámetros
+      const dashboardStats = await zohoService.getDashboardStats();
+      setStats(dashboardStats);
+      
+      // Si en el futuro queremos filtrar por rango, podemos hacerlo aquí
+      console.log(`Would filter by range: ${range}`);
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load analytics data. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
     fetchAnalyticsData();
-  }, [timeRange, toast]);
+  }, []);
+
+  // Function to handle time range change
+  const handleTimeRangeChange = (range: string) => {
+    // Convertir "_empty_" a cadena vacía si es necesario
+    const normalizedRange = range === "_empty_" ? "" : range;
+    setTimeRange(normalizedRange);
+    // Fetch new data based on selected range
+    fetchAnalyticsData(normalizedRange);
+  };
 
   // Data for the charts
   const generateTicketsByPriorityData = () => {
@@ -184,16 +194,19 @@ const Analytics: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2 items-center">
-          <Select value={timeRange} onValueChange={setTimeRange}>
+          <Select 
+            value={timeRange} 
+            onValueChange={handleTimeRangeChange}
+          >
             <SelectTrigger className="w-[180px]">
               <Calendar className="mr-2 h-4 w-4" />
               <SelectValue placeholder="Select time range" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="week">Last 7 days</SelectItem>
-              <SelectItem value="month">Last 30 days</SelectItem>
-              <SelectItem value="quarter">Last 90 days</SelectItem>
-              <SelectItem value="year">Last 12 months</SelectItem>
+              <SafeSelectItem value="week">Last 7 days</SafeSelectItem>
+              <SafeSelectItem value="month">Last 30 days</SafeSelectItem>
+              <SafeSelectItem value="quarter">Last 90 days</SafeSelectItem>
+              <SafeSelectItem value="year">Last 12 months</SafeSelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline">

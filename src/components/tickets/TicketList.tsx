@@ -1,53 +1,81 @@
-import React from 'react';
-import { List } from 'immutable';
-import { useHelpdeskApi } from '../../hooks/use-helpdesk-api';
-import { ImmutableTicket } from '../../core/models/zoho.types';
+import React, { useEffect } from 'react';
+import { List, Map } from 'immutable';
+import { useDispatch, useSelector } from 'react-redux';
+import { 
+  fetchTickets, 
+  selectAllTickets, 
+  selectTicketLoading, 
+  selectTicketError,
+  ImmutableTicket
+} from '../../store/slices/ticketSlice';
+import { AppDispatch } from '../../store/store';
 
 interface TicketListProps {
-  userEmail: string;
-  userToken: string;
   filterPriority?: string;
   filterStatus?: string;
+  filterType?: 'my-tickets' | 'open' | 'history';
+  onSelectTicket?: (ticketId: string) => void;
 }
 
 /**
  * Functional component that displays a list of tickets
- * using immutable data structures and declarative patterns
+ * using immutable data structures, Redux and declarative patterns
  */
 export const TicketList: React.FC<TicketListProps> = ({
-  userEmail,
-  userToken,
   filterPriority,
-  filterStatus = 'Open',
+  filterStatus,
+  filterType = 'open',
+  onSelectTicket
 }) => {
-  // Initialize API hook with authentication
-  const helpdesk = useHelpdeskApi(userToken, userEmail);
+  // Redux hooks
+  const dispatch = useDispatch<AppDispatch>();
+  const tickets = useSelector(selectAllTickets);
+  const isLoading = useSelector(selectTicketLoading);
+  const error = useSelector(selectTicketError);
+
+  // Fetch tickets based on filter type
+  useEffect(() => {
+    const filters: Record<string, any> = {};
+    
+    // Apply type-specific filtering
+    switch (filterType) {
+      case 'my-tickets':
+        filters.isOwnedByCurrentUser = true;
+        break;
+      case 'open':
+        filters.status = ['Open', 'In Progress'];
+        break;
+      case 'history':
+        filters.status = 'Closed';
+        break;
+    }
+    
+    // Apply additional filters if provided
+    if (filterStatus && filterType !== 'open' && filterType !== 'history') {
+      filters.status = filterStatus;
+    }
+    
+    if (filterPriority) {
+      filters.priority = filterPriority;
+    }
+    
+    dispatch(fetchTickets(filters));
+  }, [dispatch, filterType, filterStatus, filterPriority]);
   
-  // Fetch tickets using SWR
-  const { 
-    tickets, 
-    isLoading, 
-    error, 
-    ticketsByPriority 
-  } = helpdesk.useTickets();
-  
-  // Apply filters in a functional way using derived state
-  const filteredTickets = React.useMemo(() => 
-    tickets
-      // Filter by status if provided
-      .filter(ticket => 
-        !filterStatus || ticket.get('status') === filterStatus
-      )
-      // Filter by priority if provided
+  // Apply client-side filtering for more complex cases
+  const filteredTickets = React.useMemo(() => {
+    if (!tickets) return List<ImmutableTicket>();
+    
+    return tickets
+      // Apply additional filtering if needed
       .filter(ticket => 
         !filterPriority || ticket.get('priority') === filterPriority
       )
       // Sort by timestamp descending
       .sort((a, b) => 
-        (b.get('createdTimestamp') || 0) - (a.get('createdTimestamp') || 0)
-      ),
-    [tickets, filterStatus, filterPriority]
-  );
+        (b.get('createdTimestamp', 0) as number) - (a.get('createdTimestamp', 0) as number)
+      );
+  }, [tickets, filterPriority]);
   
   // Extract ticket IDs for rendering optimization
   const ticketIds = React.useMemo(() => 
@@ -57,41 +85,53 @@ export const TicketList: React.FC<TicketListProps> = ({
   
   // Status counts for UI stats display
   const statusCounts = React.useMemo(() => 
-    tickets.reduce(
+    tickets && tickets.reduce(
       (counts, ticket) => {
-        const status = ticket.get('status');
+        const status = ticket.get('status', '');
         return counts.update(
           status, 
           (count = 0) => count + 1
         );
       },
-      List(['Open', 'In Progress', 'Closed'])
-        .reduce(
-          (map, status) => map.set(status, 0),
-          {}
-        )
-    ),
+      Map<string, number>().withMutations(map => {
+        map.set('Open', 0);
+        map.set('In Progress', 0);
+        map.set('On Hold', 0);
+        map.set('Closed', 0);
+      })
+    ) || Map<string, number>(),
     [tickets]
   );
   
+  // Handle ticket selection
+  const handleTicketSelect = (id: string) => {
+    if (onSelectTicket) {
+      onSelectTicket(id);
+    }
+  };
+  
   // Render loading state
-  if (isLoading) return <div>Loading tickets...</div>;
+  if (isLoading) return <div className="loading-container">Cargando tickets...</div>;
   
   // Render error state
-  if (error) return <div>Error: {error.message}</div>;
+  if (error) return <div className="error-container">Error: {error}</div>;
   
   // Render empty state
   if (filteredTickets.size === 0) {
-    return <div>No tickets found matching your criteria.</div>;
+    return (
+      <div className="empty-state">
+        <p>No se encontraron tickets que coincidan con los criterios.</p>
+      </div>
+    );
   }
   
   // Render ticket list
   return (
     <div className="ticket-list">
       <div className="ticket-stats">
-        {List(Object.entries(statusCounts.toJS()))
+        {List(statusCounts.entrySeq().toArray())
           .map(([status, count]) => (
-            <div key={status} className="stat-item">
+            <div key={status as string} className="stat-item">
               <span className="stat-label">{status}:</span>
               <span className="stat-value">{count}</span>
             </div>
@@ -102,8 +142,9 @@ export const TicketList: React.FC<TicketListProps> = ({
       <ul className="tickets">
         {filteredTickets.map(ticket => (
           <TicketItem 
-            key={ticket.get('id')} 
-            ticket={ticket} 
+            key={ticket.get('id', '')} 
+            ticket={ticket}
+            onClick={() => handleTicketSelect(ticket.get('id', ''))}
           />
         ))}
       </ul>
@@ -112,13 +153,18 @@ export const TicketList: React.FC<TicketListProps> = ({
 };
 
 // Sub-component for rendering individual tickets
-const TicketItem: React.FC<{ ticket: ImmutableTicket }> = ({ ticket }) => {
+interface TicketItemProps {
+  ticket: ImmutableTicket;
+  onClick: () => void;
+}
+
+const TicketItem: React.FC<TicketItemProps> = ({ ticket, onClick }) => {
   // Extract values once to avoid repeated get() calls
-  const id = ticket.get('id');
-  const subject = ticket.get('subject');
-  const status = ticket.get('status');
-  const priority = ticket.get('priority');
-  const createdAt = new Date(ticket.get('createdTimestamp')).toLocaleString();
+  const id = ticket.get('id', '');
+  const subject = ticket.get('subject', 'Sin asunto');
+  const status = ticket.get('status', 'Open');
+  const priority = ticket.get('priority', 'Medium');
+  const createdAt = new Date(ticket.get('createdTimestamp', Date.now())).toLocaleString();
   
   // Different classes based on priority
   const priorityClass = React.useMemo(() => 
@@ -129,16 +175,28 @@ const TicketItem: React.FC<{ ticket: ImmutableTicket }> = ({ ticket }) => {
     [priority]
   );
   
+  // Different classes based on status
+  const statusClass = React.useMemo(() => 
+    status === 'Open' ? 'status-open' :
+    status === 'In Progress' ? 'status-in-progress' :
+    status === 'On Hold' ? 'status-on-hold' :
+    'status-closed',
+    [status]
+  );
+  
   return (
-    <li className={`ticket-item ${priorityClass}`}>
+    <li 
+      className={`ticket-item ${priorityClass} ${statusClass}`}
+      onClick={onClick}
+    >
       <div className="ticket-header">
         <h3 className="ticket-subject">{subject}</h3>
         <span className="ticket-status">{status}</span>
       </div>
       <div className="ticket-meta">
         <span className="ticket-id">ID: {id}</span>
-        <span className="ticket-priority">Priority: {priority}</span>
-        <span className="ticket-created">Created: {createdAt}</span>
+        <span className="ticket-priority">Prioridad: {priority}</span>
+        <span className="ticket-created">Creado: {createdAt}</span>
       </div>
     </li>
   );

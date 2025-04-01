@@ -10,15 +10,15 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Label as FormLabel } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Select, 
   SelectContent, 
-  SelectItem, 
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import { SafeSelectItem } from "@/components/ui/safe-select-item";
 import { ArrowLeft, Loader2, Paperclip } from 'lucide-react';
 import zohoService from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
@@ -66,8 +66,15 @@ const CreateTicket: React.FC = () => {
     setTicket(prev => ({ ...prev, [name]: value }));
   };
 
+  // Function to handle select field changes
   const handleSelectChange = (field: string, value: string) => {
-    setTicket(prev => ({ ...prev, [field]: value }));
+    // Convertir "_empty_" a cadena vacía si es necesario
+    const normalizedValue = value === "_empty_" ? "" : value;
+    
+    setTicket({
+      ...ticket,
+      [field]: normalizedValue
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -130,7 +137,7 @@ const CreateTicket: React.FC = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="subject">Subject <span className="text-destructive">*</span></Label>
+              <FormLabel htmlFor="subject">Subject <span className="text-destructive">*</span></FormLabel>
               <Input 
                 id="subject" 
                 name="subject"
@@ -144,7 +151,7 @@ const CreateTicket: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="category">Category <span className="text-destructive">*</span></Label>
+                <FormLabel htmlFor="category">Category <span className="text-destructive">*</span></FormLabel>
                 <Select 
                   value={ticket.category} 
                   onValueChange={(value) => handleSelectChange('category', value)}
@@ -155,14 +162,16 @@ const CreateTicket: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map(category => (
-                      <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
+                      <SafeSelectItem key={category.id} value={category.id || "_empty_"}>
+                        {category.name}
+                      </SafeSelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="priority">Priority</Label>
+                <FormLabel htmlFor="priority">Priority</FormLabel>
                 <Select 
                   value={ticket.priority} 
                   onValueChange={(value) => handleSelectChange('priority', value)}
@@ -172,17 +181,18 @@ const CreateTicket: React.FC = () => {
                     <SelectValue placeholder="Select priority" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
+                    <SafeSelectItem value="_empty_">Select Priority</SafeSelectItem>
+                    <SafeSelectItem value="low">Low</SafeSelectItem>
+                    <SafeSelectItem value="medium">Medium</SafeSelectItem>
+                    <SafeSelectItem value="high">High</SafeSelectItem>
+                    <SafeSelectItem value="urgent">Urgent</SafeSelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description <span className="text-destructive">*</span></Label>
+              <FormLabel htmlFor="description">Description <span className="text-destructive">*</span></FormLabel>
               <Textarea 
                 id="description" 
                 name="description"

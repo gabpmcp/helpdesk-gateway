@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Map, List, fromJS } from 'immutable';
+import { List, fromJS } from 'immutable';
 import { useNavigate } from 'react-router-dom';
 import { 
   Card, 
@@ -12,10 +12,10 @@ import { Input } from '@/components/ui/input';
 import { 
   Select, 
   SelectContent, 
-  SelectItem, 
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import { SafeSelectItem } from "@/components/ui/safe-select-item";
 import { 
   Table, 
   TableBody, 
@@ -36,14 +36,13 @@ import {
 import zohoService from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import { ZohoCategory, ZohoTicket } from '@/core/models/zoho.types';
+import { ZohoCategory, ZohoTicket, ZohoFilters } from '@/core/models/zoho.types';
 
 // Type definitions for immutable structures
-type ImmutableTicket = Map<string, any>;
+type ImmutableTicket = any;
 type ImmutableTicketList = List<ImmutableTicket>;
-type ImmutableCategory = Map<string, any>;
+type ImmutableCategory = any;
 type ImmutableCategoryList = List<ImmutableCategory>;
-type ImmutableFilters = Map<string, string>;
 
 // Status badge component
 const StatusBadge = ({ status }: { status: string }) => {
@@ -83,14 +82,15 @@ const Tickets: React.FC = () => {
   const [tickets, setTickets] = useState<ImmutableTicketList>(List([]));
   const [categories, setCategories] = useState<ImmutableCategoryList>(List([]));
   const [loading, setLoading] = useState<boolean>(true);
-  const [filters, setFilters] = useState<ImmutableFilters>(Map({
+  // Tipo explícito y más estricto para los filtros
+  const [filters, setFilters] = useState<ZohoFilters>({
     status: '',
     priority: '',
     category: '',
     search: '',
     sortBy: 'modifiedTime',
-    sortOrder: 'desc'
-  }));
+    sortOrder: 'desc' // tipo literal específico
+  });
 
   useEffect(() => {
     // Functional approach to fetch categories
@@ -113,8 +113,7 @@ const Tickets: React.FC = () => {
     const fetchTickets = () => {
       setLoading(true);
       
-      // Convert immutable filters to regular object for API compatibility
-      const filtersObj = filters.toJS();
+      const filtersObj = filters;
       
       return Promise.resolve(zohoService.getTickets(filtersObj))
         .then(result => {
@@ -140,30 +139,42 @@ const Tickets: React.FC = () => {
 
   // Pure function to handle search input change
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilters(prevFilters => prevFilters.set('search', e.target.value));
+    setFilters(prevFilters => ({
+      ...prevFilters,
+      search: e.target.value
+    }));
   };
 
   // Pure function to handle filter changes
   const handleFilterChange = (key: string, value: string) => {
-    setFilters(prevFilters => prevFilters.set(key, value));
+    // Si el valor es "_empty_", lo convertimos a cadena vacía
+    const normalizedValue = value === "_empty_" ? "" : value;
+    
+    setFilters(prevFilters => ({
+      ...prevFilters,
+      [key]: normalizedValue
+    }));
   };
 
   // Pure function to toggle sort order
   const toggleSort = (field: string) => {
     setFilters(prevFilters => {
-      const currentSortBy = prevFilters.get('sortBy', '');
-      const currentSortOrder = prevFilters.get('sortOrder', 'asc');
+      const currentSortBy = prevFilters.sortBy;
+      const currentSortOrder = prevFilters.sortOrder || 'desc';
       
-      return prevFilters
-        .set('sortBy', field)
-        .set('sortOrder', currentSortBy === field && currentSortOrder === 'asc' ? 'desc' : 'asc');
+      return {
+        ...prevFilters,
+        sortBy: field,
+        // Especificar que siempre será uno de los dos tipos literales
+        sortOrder: (currentSortBy === field && currentSortOrder === 'asc' ? 'desc' : 'asc') as 'asc' | 'desc'
+      };
     });
   };
 
   // Pure function for sort icon component
   const SortIcon = ({ field }: { field: string }) => {
-    if (filters.get('sortBy') !== field) return null;
-    return filters.get('sortOrder') === 'asc' ? 
+    if (filters.sortBy !== field) return null;
+    return filters.sortOrder === 'asc' ? 
       <SortAsc className="inline h-4 w-4 ml-1" /> : 
       <SortDesc className="inline h-4 w-4 ml-1" />;
   };
@@ -197,59 +208,64 @@ const Tickets: React.FC = () => {
                 type="search" 
                 placeholder="Search tickets..." 
                 className="pl-8"
-                value={filters.get('search', '')}
+                value={filters.search}
                 onChange={handleSearch}
               />
             </div>
             <div className="flex flex-col sm:flex-row gap-4 w-full md:flex-1">
               <Select 
-                value={filters.get('status', '')} 
+                value={filters.status || "_empty_"} 
                 onValueChange={(value) => handleFilterChange('status', value)}
               >
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Statuses</SelectItem>
-                  <SelectItem value="new">New</SelectItem>
-                  <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="in-progress">In Progress</SelectItem>
-                  <SelectItem value="on-hold">On Hold</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
+                  <SafeSelectItem value="_empty_">All Statuses</SafeSelectItem>
+                  <SafeSelectItem value="new">New</SafeSelectItem>
+                  <SafeSelectItem value="open">Open</SafeSelectItem>
+                  <SafeSelectItem value="in-progress">In Progress</SafeSelectItem>
+                  <SafeSelectItem value="on-hold">On Hold</SafeSelectItem>
+                  <SafeSelectItem value="resolved">Resolved</SafeSelectItem>
+                  <SafeSelectItem value="closed">Closed</SafeSelectItem>
                 </SelectContent>
               </Select>
               
               <Select 
-                value={filters.get('priority', '')} 
+                value={filters.priority || "_empty_"} 
                 onValueChange={(value) => handleFilterChange('priority', value)}
               >
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Priority" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Priorities</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
+                  <SafeSelectItem value="_empty_">All Priorities</SafeSelectItem>
+                  <SafeSelectItem value="low">Low</SafeSelectItem>
+                  <SafeSelectItem value="medium">Medium</SafeSelectItem>
+                  <SafeSelectItem value="high">High</SafeSelectItem>
+                  <SafeSelectItem value="urgent">Urgent</SafeSelectItem>
                 </SelectContent>
               </Select>
               
               <Select 
-                value={filters.get('category', '')} 
+                value={filters.category || "_empty_"} 
                 onValueChange={(value) => handleFilterChange('category', value)}
               >
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Categories</SelectItem>
-                  {categories.map(category => (
-                    <SelectItem key={category.get('id')} value={category.get('id')}>
-                      {category.get('name')}
-                    </SelectItem>
-                  ))}
+                  <SafeSelectItem value="_empty_">All Categories</SafeSelectItem>
+                  {categories.map(category => {
+                    // Asegurar que id y name son strings válidos
+                    const id = String(category.get('id', ''));
+                    const name = String(category.get('name', 'Unknown'));
+                    return (
+                      <SafeSelectItem key={id} value={id}>
+                        {name}
+                      </SafeSelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -262,14 +278,14 @@ const Tickets: React.FC = () => {
           ) : tickets.size === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground">No tickets found</p>
-              <Button className="mt-4" onClick={() => setFilters(Map({
+              <Button className="mt-4" onClick={() => setFilters({
                 status: '',
                 priority: '',
                 category: '',
                 search: '',
                 sortBy: 'modifiedTime',
                 sortOrder: 'desc'
-              }))}>
+              })}>
                 <Filter className="h-4 w-4 mr-2" />
                 Clear Filters
               </Button>

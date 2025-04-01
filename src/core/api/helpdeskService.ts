@@ -265,6 +265,159 @@ export const dashboardService = {
   }
 };
 
+// Ticket API Methods
+export const getTickets = async (filters: Record<string, any> = {}): Promise<any> => {
+  try {
+    // Construir parámetros de consulta
+    const queryParams = new URLSearchParams();
+    
+    Object.entries(filters)
+      .filter(([_, value]) => value !== undefined && value !== null)
+      .forEach(([key, value]) => queryParams.append(key, String(value)));
+    
+    const queryString = queryParams.toString();
+    
+    const response = await fetch(`http://localhost:3000/api/tickets${queryString ? `?${queryString}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      mode: 'cors'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error al obtener tickets: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error en getTickets:', error);
+    throw error;
+  }
+};
+
+export const getTicketById = async (ticketId: string): Promise<any> => {
+  try {
+    const response = await fetch(`http://localhost:3000/api/tickets/${ticketId}`, {
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      mode: 'cors'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error al obtener detalles del ticket: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error en getTicketById:', error);
+    throw error;
+  }
+};
+
+export const createTicket = async (ticketData: Record<string, any>): Promise<any> => {
+  try {
+    const response = await fetch('http://localhost:3000/api/tickets', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      mode: 'cors',
+      body: JSON.stringify(ticketData)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error al crear ticket: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error en createTicket:', error);
+    throw error;
+  }
+};
+
+export const updateTicketStatus = async (ticketId: string, status: string): Promise<any> => {
+  try {
+    const response = await fetch(`http://localhost:3000/api/tickets/${ticketId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      mode: 'cors',
+      body: JSON.stringify({ status })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error al actualizar estado del ticket: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error en updateTicketStatus:', error);
+    throw error;
+  }
+};
+
+export const addTicketComment = async (
+  ticketId: string, 
+  message: string,
+  attachments: File[] = []
+): Promise<any> => {
+  try {
+    let response;
+    
+    if (attachments.length > 0) {
+      // Si hay archivos adjuntos, enviar como FormData
+      const formData = new FormData();
+      formData.append('message', message);
+      
+      attachments.forEach(file => {
+        formData.append('attachments', file);
+      });
+      
+      response = await fetch(`http://localhost:3000/api/tickets/${ticketId}/comments`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        },
+        mode: 'cors',
+        body: formData
+      });
+    } else {
+      // Sin archivos adjuntos, enviar como JSON
+      response = await fetch(`http://localhost:3000/api/tickets/${ticketId}/comments`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        mode: 'cors',
+        body: JSON.stringify({ message })
+      });
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Error al añadir comentario: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error en addTicketComment:', error);
+    throw error;
+  }
+};
+
 // Factory function to create service with email injection
 export const createHelpdeskService = (email: string, token: string) => {
   return {
@@ -278,7 +431,12 @@ export const createHelpdeskService = (email: string, token: string) => {
       create: (payload: TicketCreationPayload) => ticketService.createTicket(payload, email),
       addComment: (ticketId: string, comment: string) => ticketService.addComment(ticketId, comment, email),
       escalate: (ticketId: string) => ticketService.escalateTicket(ticketId, email),
-      getAll: () => ticketService.getTickets(email)
+      getAll: () => ticketService.getTickets(email),
+      getTickets: (filters: Record<string, any>) => getTickets(filters),
+      getTicketById: (ticketId: string) => getTicketById(ticketId),
+      createTicket: (ticketData: Record<string, any>) => createTicket(ticketData),
+      updateTicketStatus: (ticketId: string, status: string) => updateTicketStatus(ticketId, status),
+      addTicketComment: (ticketId: string, message: string, attachments: File[] = []) => addTicketComment(ticketId, message, attachments)
     },
     dashboard: {
       getData: () => dashboardService.getDashboardData(email)
