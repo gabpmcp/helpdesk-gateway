@@ -3,10 +3,10 @@ import { Map as ImmutableMap, List as ImmutableList } from 'immutable';
 import { 
   ZohoTicket, 
   ZohoComment, 
-  ZohoCommentInput, 
   ImmutableTicket, 
   ImmutableComment 
 } from '../../core/models/zoho.types';
+import { commandService, Command } from '../../core/api/helpdeskService';
 
 // Define the state interface
 interface TicketDetailState {
@@ -24,42 +24,127 @@ const initialState: TicketDetailState = {
   error: null
 };
 
-// Async thunk that accepts a function parameter for fetching a ticket by ID
+// Interfaz para la respuesta del ticket
+interface TicketResponse {
+  ticket: ImmutableTicket;
+}
+
+// Interfaz para la respuesta del comentario
+interface CommentResponse {
+  commentAdded: boolean;
+  commentId?: string;
+}
+
+// Async thunk for fetching a ticket by ID using the command service
 export const fetchTicketById = createAsyncThunk<
   ImmutableTicket,
-  { fetchTicketById: (id: string) => Promise<ZohoTicket>; id: string },
+  { ticketId: string; userId: string; token: string },
   { rejectValue: string }
 >(
   'ticketDetail/fetchTicketById',
-  async ({ fetchTicketById, id }, { rejectWithValue }) => {
+  async ({ ticketId, userId, token }, { rejectWithValue }) => {
     try {
-      const ticket = await fetchTicketById(id);
-      // Usar Map de Immutable.js explícitamente
-      return ImmutableMap(ticket) as unknown as ImmutableTicket;
+      // Crear comando para obtener detalles del ticket
+      const command: Command = {
+        type: 'FETCH_TICKET',
+        userId,
+        ticketId,
+        timestamp: Date.now()
+      };
+      
+      const result = await commandService.sendCommand<TicketResponse>(command, token);
+      
+      if (result.type === 'success') {
+        return result.value.ticket;
+      } else {
+        return rejectWithValue(result.error.message);
+      }
     } catch (error) {
       return rejectWithValue(error instanceof Error ? error.message : 'Failed to fetch ticket');
     }
   }
 );
 
-// Async thunk that accepts a function parameter for adding a comment
+// Async thunk for adding a comment using the command service
 export const addComment = createAsyncThunk<
   ImmutableComment,
   { 
-    addComment: (ticketId: string, commentData: ZohoCommentInput) => Promise<ZohoComment>; 
     ticketId: string; 
-    commentData: ZohoCommentInput 
+    comment: string;
+    userId: string;
+    token: string;
   },
   { rejectValue: string }
 >(
   'ticketDetail/addComment',
-  async ({ addComment, ticketId, commentData }, { rejectWithValue }) => {
+  async ({ ticketId, comment, userId, token }, { rejectWithValue }) => {
     try {
-      const comment = await addComment(ticketId, commentData);
-      // Usar Map de Immutable.js explícitamente
-      return ImmutableMap(comment) as unknown as ImmutableComment;
+      // Crear comando para añadir comentario
+      const command: Command = {
+        type: 'ADD_COMMENT',
+        userId,
+        ticketId,
+        comment,
+        timestamp: Date.now()
+      };
+      
+      const result = await commandService.sendCommand<CommentResponse>(command, token);
+      
+      if (result.type === 'success') {
+        // Construir un objeto de comentario con los datos disponibles
+        return ImmutableMap({
+          id: result.value.commentId || `comment-${Date.now()}`,
+          content: comment,
+          createdTime: new Date().toISOString(),
+          createdBy: {
+            id: userId,
+            name: 'Current User'
+          }
+        }) as unknown as ImmutableComment;
+      } else {
+        return rejectWithValue(result.error.message);
+      }
     } catch (error) {
       return rejectWithValue(error instanceof Error ? error.message : 'Failed to add comment');
+    }
+  }
+);
+
+// Interfaz para la respuesta de escalación
+interface EscalateResponse {
+  escalated: boolean;
+}
+
+// Async thunk for escalating a ticket using the command service
+export const escalateTicket = createAsyncThunk<
+  { escalated: boolean },
+  { 
+    ticketId: string; 
+    userId: string;
+    token: string;
+  },
+  { rejectValue: string }
+>(
+  'ticketDetail/escalateTicket',
+  async ({ ticketId, userId, token }, { rejectWithValue }) => {
+    try {
+      // Crear comando para escalar ticket
+      const command: Command = {
+        type: 'ESCALATE_TICKET',
+        userId,
+        ticketId,
+        timestamp: Date.now()
+      };
+      
+      const result = await commandService.sendCommand<EscalateResponse>(command, token);
+      
+      if (result.type === 'success') {
+        return { escalated: true };
+      } else {
+        return rejectWithValue(result.error.message);
+      }
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to escalate ticket');
     }
   }
 );
@@ -79,8 +164,7 @@ const ticketDetailSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchTicketById.fulfilled, (state, action: PayloadAction<ImmutableTicket>) => {
-        // Usar casting explícito para evitar problemas de tipado
-        state.ticket = action.payload as any;
+        state.ticket = action.payload;
         state.loading = false;
         state.error = null;
       })
@@ -96,10 +180,10 @@ const ticketDetailSlice = createSlice({
       })
       .addCase(addComment.fulfilled, (state, action: PayloadAction<ImmutableComment>) => {
         if (state.ticket) {
-          // Obtener los comentarios actuales o crear una lista vacía si no existen
           const ticketAny = state.ticket as any;
-          const comments = ticketAny.get('comments', ImmutableList()) as unknown as ImmutableList<ImmutableComment>;
-          state.ticket = ticketAny.set('comments', comments.push(action.payload)) as any;
+          // Utilizar ImmutableList en lugar de List para evitar errores de tipo
+          const comments = ticketAny.get('comments', ImmutableList<ImmutableComment>()) as ImmutableList<ImmutableComment>;
+          state.ticket = ticketAny.set('comments', comments.push(action.payload)) as ImmutableTicket;
         }
         state.commentLoading = false;
         state.error = null;
@@ -107,6 +191,24 @@ const ticketDetailSlice = createSlice({
       .addCase(addComment.rejected, (state, action) => {
         state.commentLoading = false;
         state.error = action.payload || 'Failed to add comment';
+      })
+      
+      // Escalate ticket cases
+      .addCase(escalateTicket.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(escalateTicket.fulfilled, (state) => {
+        if (state.ticket) {
+          const ticketAny = state.ticket as any;
+          state.ticket = ticketAny.set('priority', 'High') as ImmutableTicket;
+        }
+        state.loading = false;
+        state.error = null;
+      })
+      .addCase(escalateTicket.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || 'Failed to escalate ticket';
       });
   }
 });

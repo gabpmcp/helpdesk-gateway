@@ -203,11 +203,31 @@ export interface ZohoCategory {
 }
 
 export interface ZohoDashboardStats {
-  totalTickets: number;
-  openTickets: number;
-  resolvedTickets: number;
-  closedTickets: number;
-  ticketsByPriority?: Record<string, number>;
+  ticketCount: number;
+  openTicketCount: number;
+  urgentTicketCount: number;
+  responseTimeAvg: number;
+  satisfactionScore: number;
+  metrics: {
+    ticketsByPriority: {
+      Low: number;
+      Medium: number;
+      High: number;
+      Urgent: number;
+    };
+    ticketsByStatus: {
+      Open: number;
+      'In Progress': number;
+      Closed: number;
+      'On Hold': number;
+    };
+  };
+  timestamp: string;
+  // Los siguientes campos son para compatibilidad con tipos anteriores
+  totalTickets?: number;
+  openTickets?: number;
+  resolvedTickets?: number;
+  closedTickets?: number;
   ticketsByCategory?: Record<string, number>;
   recentActivity?: Array<Record<string, unknown>>;
   avgResolutionTime?: string;

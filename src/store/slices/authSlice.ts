@@ -1,86 +1,175 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { Map as ImmutableMap } from 'immutable';
-import { ZohoUser, ImmutableUser } from '../../core/models/zoho.types';
+import { Map as ImmutableMap, fromJS } from 'immutable';
+import { dispatchCommand, createLoginCommand, createRefreshTokenCommand } from '../../core/api/commandDispatcher';
 
-// Define the auth response interface
-interface AuthResponse {
-  user: ZohoUser;
-  token: string;
+// Define the authentication interfaces
+interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
 }
 
-// Define the state interface
+// Login response from the backend
+interface LoginResponse {
+  success: boolean;
+  email: string;
+  accessToken: string;
+  refreshToken: string;
+  error?: string;
+}
+
+// Define the state interface with immutable structures
 interface AuthState {
-  user: ImmutableUser | null;
-  token: string | null;
-  loading: boolean;
-  error: string | null;
+  email: string | null;
+  tokens: AuthTokens | null;
+  isLoading: boolean;
   isAuthenticated: boolean;
+  error: string | null;
 }
 
 // Initial state with immutable structures
 const initialState: AuthState = {
-  user: null,
-  token: null,
-  loading: false,
-  error: null,
-  isAuthenticated: false
+  email: null,
+  tokens: null,
+  isLoading: false,
+  isAuthenticated: false,
+  error: null
 };
 
-// Async thunk that accepts a function parameter for user authentication
-export const authenticateUser = createAsyncThunk<
-  { user: ImmutableUser; token: string },
-  { 
-    authenticateUser: (email: string, password: string) => Promise<AuthResponse>; 
-    email: string; 
-    password: string 
-  },
+// Async thunk for login attempt
+export const loginAttempt = createAsyncThunk<
+  LoginResponse,
+  { email: string; password: string; role?: string },
   { rejectValue: string }
 >(
-  'auth/authenticateUser',
-  async ({ authenticateUser, email, password }, { rejectWithValue }) => {
+  'auth/loginAttempt',
+  async ({ email, password, role = 'user' }, { rejectWithValue }) => {
     try {
-      const response = await authenticateUser(email, password);
-      return {
-        user: ImmutableMap(response.user) as ImmutableUser,
-        token: response.token
-      };
+      // Create the login command
+      const loginCommand = createLoginCommand(email, password, role);
+      
+      // Dispatch the command to the backend
+      const result = await dispatchCommand<LoginResponse>(loginCommand);
+      
+      // Handle the result
+      if (result.type === 'success') {
+        const response = result.value;
+        
+        // If login failed on the backend side
+        if (!response.success) {
+          return rejectWithValue(response.error || 'Authentication failed');
+        }
+        
+        return response;
+      } else {
+        return rejectWithValue(result.error.message || 'Authentication failed');
+      }
     } catch (error) {
-      return rejectWithValue(error instanceof Error ? error.message : 'Authentication failed');
+      return rejectWithValue(
+        error instanceof Error ? error.message : 'Authentication failed'
+      );
     }
   }
 );
 
-// Create the auth slice
+// Async thunk for token refresh
+export const refreshToken = createAsyncThunk<
+  LoginResponse,
+  void,
+  { rejectValue: string; state: { auth: AuthState } }
+>(
+  'auth/refreshToken',
+  async (_, { getState, rejectWithValue }) => {
+    const { email, tokens } = getState().auth;
+    
+    if (!email || !tokens || !tokens.refreshToken) {
+      return rejectWithValue('No refresh token available');
+    }
+    
+    try {
+      // Create the refresh token command
+      const refreshCommand = createRefreshTokenCommand(email, tokens.refreshToken);
+      
+      // Dispatch the command to the backend
+      const result = await dispatchCommand<LoginResponse>(refreshCommand);
+      
+      // Handle the result
+      if (result.type === 'success') {
+        const response = result.value;
+        
+        // If refresh failed on the backend side
+        if (!response.success) {
+          return rejectWithValue(response.error || 'Token refresh failed');
+        }
+        
+        return response;
+      } else {
+        return rejectWithValue(result.error.message || 'Token refresh failed');
+      }
+    } catch (error) {
+      return rejectWithValue(
+        error instanceof Error ? error.message : 'Token refresh failed'
+      );
+    }
+  }
+);
+
+// Create the auth slice with pure reducers
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
     logout: () => initialState,
-    setToken: (state, action: PayloadAction<string>) => {
-      state.token = action.payload;
-      state.isAuthenticated = !!action.payload;
+    clearError: (state) => {
+      state.error = null;
     }
   },
   extraReducers: (builder) => {
     builder
-      .addCase(authenticateUser.pending, (state) => {
-        state.loading = true;
+      // Login attempt cases
+      .addCase(loginAttempt.pending, (state) => {
+        state.isLoading = true;
         state.error = null;
       })
-      .addCase(authenticateUser.fulfilled, (state, action) => {
-        state.user = action.payload.user;
-        state.token = action.payload.token;
+      .addCase(loginAttempt.fulfilled, (state, action) => {
+        state.isLoading = false;
         state.isAuthenticated = true;
-        state.loading = false;
+        state.email = action.payload.email;
+        state.tokens = {
+          accessToken: action.payload.accessToken,
+          refreshToken: action.payload.refreshToken
+        };
         state.error = null;
       })
-      .addCase(authenticateUser.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload || 'Authentication failed';
+      .addCase(loginAttempt.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = false;
+        state.error = action.payload || 'Login failed';
+      })
+      
+      // Token refresh cases
+      .addCase(refreshToken.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(refreshToken.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = true;
+        state.email = action.payload.email;
+        state.tokens = {
+          accessToken: action.payload.accessToken,
+          refreshToken: action.payload.refreshToken
+        };
+        state.error = null;
+      })
+      .addCase(refreshToken.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = false;
+        state.tokens = null;
+        state.error = action.payload || 'Token refresh failed';
       });
   }
 });
 
 // Export actions and reducer
-export const { logout, setToken } = authSlice.actions;
+export const { logout, clearError } = authSlice.actions;
 export default authSlice.reducer;

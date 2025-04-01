@@ -1,5 +1,5 @@
 import { Map, List, fromJS } from 'immutable';
-import { createZohoClient } from '../shell/externalClients/zohoClient';
+import { createApiClient } from '../core/api/apiClient';
 import {
   transformTicket,
   transformComment,
@@ -26,13 +26,19 @@ import {
 } from '../core/models/zoho.types';
 import { toImmutableTicket, toImmutableComment, toImmutableCategory, toImmutableFilters } from '../core/models/zoho.types';
 
-// Create the Zoho client
-const zohoClient = createZohoClient();
+// Create the API client for backend proxy
+const apiClient = createApiClient();
 
 // Service functions that combine pure logic with API calls
-const authenticateUser = (email: string, password: string): Promise<string> =>
-  zohoClient.authenticateUser(email)(password)
-    .then(response => response.get('access_token', ''));
+const authenticateUser = async (email: string, password: string): Promise<string> => {
+  try {
+    const response = await apiClient.post('/api/auth/login', { email, password });
+    return response.get('accessToken', '');
+  } catch (error) {
+    console.error('Authentication error:', error);
+    throw error;
+  }
+};
 
 // Interface for the response structure that includes tickets
 interface TicketsResponse {
@@ -41,126 +47,154 @@ interface TicketsResponse {
   page: number;
 }
 
-const getTickets = (filters: ZohoFilters = {}): Promise<TicketsResponse> =>
-  zohoClient.fetchTickets(filters)
-    .then(response => {
-      // Convert response to immutable structure
-      const immutableTickets = List<ImmutableTicket>(
-        response.get('data', List())
-          .map((item: Record<string, unknown>) => transformTicket(item))
-          .toArray()
-      );
-      
-      // Process tickets with immutable operations
-      const immutableFilters = Map(filters) as ImmutableFilters;
-      const processedTickets = processTickets(immutableTickets, immutableFilters);
-      
-      // Convert back to JS for API compatibility and wrap in response object
-      return {
-        tickets: toJS<ZohoTicket[]>(processedTickets),
-        total: Number(response.getIn(['info', 'total'], 0)),
-        page: Number(response.getIn(['info', 'page'], 1))
-      };
-    });
+/**
+ * Get tickets with optional filters
+ * Uses backend proxy to avoid CORS issues
+ */
+const getTickets = async (filters: ZohoFilters = {}): Promise<TicketsResponse> => {
+  try {
+    // Create URL parameters from filters
+    const params = new URLSearchParams();
+    Object.entries(filters)
+      .filter(([_, value]) => value !== undefined && value !== null && value !== '')
+      .forEach(([key, value]) => params.append(key, String(value)));
+    
+    // Make the API request through the backend proxy
+    const response = await apiClient.get(`/api/zoho/tickets?${params.toString()}`);
+    
+    // Convert response to immutable structure
+    const immutableTickets = List<ImmutableTicket>(
+      (response.get('data', List()) as List<any>)
+        .map((item: any) => transformTicket(item))
+        .toArray()
+    );
+    
+    // Apply filtering and sorting
+    const processedTickets = processTickets(immutableTickets, Map(filters) as ImmutableFilters);
+    
+    // Return the processed data
+    return {
+      tickets: processedTickets.toArray().map(ticket => toJS(ticket) as ZohoTicket),
+      total: response.get('total', 0) as number,
+      page: response.get('page', 1) as number
+    };
+  } catch (error) {
+    console.error('Error fetching tickets:', error);
+    throw error;
+  }
+};
 
-const getTicketById = (id: string): Promise<ZohoTicket> =>
-  zohoClient.fetchTicketById(id)
-    .then(response => {
-      // Convert response to immutable structure and transform
-      const immutableTicket = transformTicket(response.get('data'));
-      
-      // Convert back to JS for API compatibility
-      return toJS<ZohoTicket>(immutableTicket);
-    });
+/**
+ * Get a ticket by ID
+ * Uses backend proxy to avoid CORS issues
+ */
+const getTicketById = async (id: string): Promise<ZohoTicket> => {
+  try {
+    // Make the API request through the backend proxy
+    const response = await apiClient.get(`/api/zoho/tickets/${id}`);
+    
+    // Transform the ticket data
+    const immutableTicket = transformTicket(response.get('data', Map()).toJS());
+    
+    // Return the ticket data
+    return toJS(immutableTicket) as ZohoTicket;
+  } catch (error) {
+    console.error(`Error fetching ticket ${id}:`, error);
+    throw error;
+  }
+};
 
-const createTicket = (ticketData: ZohoTicketInput): Promise<ZohoTicket> =>
-  zohoClient.createTicket(ticketData)
-    .then(response => {
-      // Convert response to immutable structure and transform
-      const immutableTicket = transformTicket(response.get('data'));
-      
-      // Convert back to JS for API compatibility
-      return toJS<ZohoTicket>(immutableTicket);
-    });
+/**
+ * Add a comment to a ticket
+ * Uses backend proxy to avoid CORS issues
+ */
+const addComment = async (ticketId: string, commentData: ZohoCommentInput): Promise<ZohoComment> => {
+  try {
+    // Make the API request through the backend proxy
+    const response = await apiClient.post(`/api/zoho/tickets/${ticketId}/comments`, commentData);
+    
+    // Transform the comment data
+    const immutableComment = transformComment(response.get('data', Map()).toJS());
+    
+    // Return the comment data
+    return toJS(immutableComment) as ZohoComment;
+  } catch (error) {
+    console.error(`Error adding comment to ticket ${ticketId}:`, error);
+    throw error;
+  }
+};
 
-const addComment = (ticketId: string, commentData: ZohoCommentInput): Promise<ZohoComment> =>
-  zohoClient.addComment(ticketId)(commentData)
-    .then(response => {
-      // Convert response to immutable structure and transform
-      const immutableComment = transformComment(response.get('data'));
-      
-      // Convert back to JS for API compatibility
-      return toJS<ZohoComment>(immutableComment);
-    });
+/**
+ * Create a new ticket
+ * Uses backend proxy to avoid CORS issues
+ */
+const createTicket = async (ticketData: ZohoTicketInput): Promise<ZohoTicket> => {
+  try {
+    // Make the API request through the backend proxy
+    const response = await apiClient.post('/api/zoho/tickets', ticketData);
+    
+    // Transform the ticket data
+    const immutableTicket = transformTicket(response.get('data', Map()).toJS());
+    
+    // Return the ticket data
+    return toJS(immutableTicket) as ZohoTicket;
+  } catch (error) {
+    console.error('Error creating ticket:', error);
+    throw error;
+  }
+};
 
-const getCategories = (): Promise<ZohoCategory[]> =>
-  zohoClient.fetchCategories()
-    .then(response => {
-      // Convert response to immutable structure
-      const immutableCategories = List(
-        response.get('data', List())
-          .map((item: Record<string, unknown>) => transformCategory(item))
-          .toArray()
-      );
-      
-      // Convert back to JS for API compatibility
-      return toJS<ZohoCategory[]>(immutableCategories);
-    });
+/**
+ * Get dashboard statistics
+ * Uses backend projection endpoint to avoid CORS issues
+ */
+const getDashboardStats = async (): Promise<ZohoDashboardStats> => {
+  try {
+    // Make the API request through the backend projection endpoint
+    const response = await apiClient.get('/projections/dashboard/overview');
+    
+    // Transform the dashboard stats
+    const immutableStats = transformDashboardStats(response.toJS());
+    
+    // Return the dashboard stats
+    return toJS(immutableStats) as ZohoDashboardStats;
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error);
+    throw error;
+  }
+};
 
-const getDashboardStats = (): Promise<ZohoDashboardStats> =>
-  zohoClient.fetchDashboardStats()
-    .then(response => {
-      // Convert response to immutable structure and transform
-      const immutableStats = transformDashboardStats(response.get('data'));
-      
-      // Add additional computed stats
-      const enhancedStats = immutableStats
-        .set('ticketsByPriority', Map({
-          'Low': 12,
-          'Medium': 24,
-          'High': 8,
-          'Urgent': 4
-        }))
-        .set('ticketsByCategory', Map({
-          'Technical': 18,
-          'Billing': 14,
-          'Feature Request': 10,
-          'General': 6
-        }))
-        .set('recentActivity', List([
-          Map({
-            id: '1',
-            ticketId: 'TKT-001',
-            subject: 'Login issue',
-            type: 'comment',
-            content: 'Added a new comment with troubleshooting steps',
-            performedBy: 'Support Agent',
-            performedTime: '2023-06-15T10:30:00Z'
-          }),
-          Map({
-            id: '2',
-            ticketId: 'TKT-002',
-            subject: 'Payment failed',
-            type: 'status_change',
-            content: 'Changed status from Open to In Progress',
-            performedBy: 'Support Manager',
-            performedTime: '2023-06-15T09:45:00Z'
-          })
-        ]));
-      
-      // Convert back to JS for API compatibility
-      return toJS<ZohoDashboardStats>(enhancedStats);
-    });
+/**
+ * Get categories
+ * Uses backend proxy to avoid CORS issues
+ */
+const getCategories = async (): Promise<ZohoCategory[]> => {
+  try {
+    // Make the API request through the backend proxy
+    const response = await apiClient.get('/api/zoho/categories');
+    
+    // Transform the categories data
+    const immutableCategories = List<ImmutableCategory>(
+      (response.get('data', List()) as List<any>)
+        .map((item: any) => transformCategory(item))
+        .toArray()
+    );
+    
+    // Return the categories data
+    return immutableCategories.toArray().map(category => toJS(category) as ZohoCategory);
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    throw error;
+  }
+};
 
 // Export the service functions
-const zohoService = {
+export default {
   authenticateUser,
   getTickets,
   getTicketById,
-  createTicket,
   addComment,
-  getCategories,
-  getDashboardStats
+  createTicket,
+  getDashboardStats,
+  getCategories
 };
-
-export default zohoService;
