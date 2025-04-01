@@ -16,12 +16,6 @@ const defaultConfig: ApiConfig = {
 
 // Create API client with dependency injection
 export const createApiClient = (config: ApiConfig = defaultConfig) => {
-  // Add authorization header to request
-  const withAuth = (token?: string) => ({
-    ...config.defaultHeaders,
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
-  });
-
   // Get token from localStorage
   const getToken = (): string | null => {
     try {
@@ -37,6 +31,11 @@ export const createApiClient = (config: ApiConfig = defaultConfig) => {
     }
   };
 
+  // Check if the endpoint is a Zoho API endpoint that doesn't need auth
+  const isZohoEndpoint = (endpoint: string): boolean => {
+    return endpoint.startsWith('/api/zoho/');
+  };
+
   // Generic request function
   const request = async <T>(
     endpoint: string,
@@ -46,8 +45,11 @@ export const createApiClient = (config: ApiConfig = defaultConfig) => {
   ): Promise<Map<string, any>> => {
     const url = `${config.baseUrl}${endpoint}`;
     const token = getToken();
+    
+    // Only include Authorization header for non-Zoho endpoints
     const headers = {
-      ...withAuth(token),
+      ...config.defaultHeaders,
+      ...(!isZohoEndpoint(endpoint) && token ? { Authorization: `Bearer ${token}` } : {}),
       ...customHeaders
     };
     

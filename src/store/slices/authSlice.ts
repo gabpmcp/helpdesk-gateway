@@ -118,7 +118,13 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    logout: () => initialState,
+    logout: (state) => {
+      // Primero eliminamos cualquier información de autenticación del localStorage
+      localStorage.removeItem('auth');
+      
+      // Luego restablecemos el estado a su valor inicial
+      return initialState;
+    },
     clearError: (state) => {
       state.error = null;
     }

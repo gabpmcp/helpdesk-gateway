@@ -10,7 +10,6 @@ interface SafeSelectItemProps {
   children: React.ReactNode;
   disabled?: boolean;
   className?: string;
-  key?: string;
 }
 
 export const SafeSelectItem: React.FC<SafeSelectItemProps> = ({

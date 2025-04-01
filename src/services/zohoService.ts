@@ -173,15 +173,36 @@ const getCategories = async (): Promise<ZohoCategory[]> => {
     // Make the API request through the backend proxy
     const response = await apiClient.get('/api/zoho/categories');
     
-    // Transform the categories data
-    const immutableCategories = List<ImmutableCategory>(
-      (response.get('data', List()) as List<any>)
-        .map((item: any) => transformCategory(item))
-        .toArray()
-    );
+    // Acceder al array de categorías dentro de la estructura de respuesta
+    // El backend devuelve { categories: [...] }
+    const categoriesData = response.get('categories', List());
     
-    // Return the categories data
-    return immutableCategories.toArray().map(category => toJS(category) as ZohoCategory);
+    console.log('Categorías recibidas (raw):', categoriesData.toJS());
+    
+    // Si no hay categorías, devolver un array vacío
+    if (!categoriesData || !categoriesData.size) {
+      console.warn('No se encontraron categorías');
+      return [];
+    }
+    
+    // Transform the categories data to ensure they have the correct format
+    const categories = categoriesData.map((item) => {
+      // Ensure we have valid id and name
+      const id = item.get('id', '');
+      const name = item.get('name', '');
+      
+      return {
+        id: String(id),
+        name: String(name),
+        description: item.get('description', ''),
+        isDefault: item.get('isDefault', false)
+      };
+    }).toArray();
+    
+    console.log('Categorías procesadas:', categories);
+    
+    // Return plain JavaScript objects, not Immutable structures
+    return categories;
   } catch (error) {
     console.error('Error fetching categories:', error);
     throw error;

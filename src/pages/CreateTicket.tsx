@@ -29,6 +29,7 @@ const CreateTicket: React.FC = () => {
   const { toast } = useToast();
   const [categories, setCategories] = useState<ZohoCategory[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [ticket, setTicket] = useState<ZohoTicketInput>({
     subject: '',
     description: '',
@@ -41,12 +42,19 @@ const CreateTicket: React.FC = () => {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
+        setIsLoading(true);
         const categoriesData = await zohoService.getCategories();
-        setCategories(categoriesData);
+        console.log('Categorías obtenidas en CreateTicket:', categoriesData);
+        
+        // Filtrar categorías válidas
+        const validCategories = categoriesData.filter(cat => cat && cat.id && cat.name);
+        setCategories(validCategories);
         
         // Set the first category as default if available
-        if (categoriesData.length > 0) {
-          setTicket(prev => ({ ...prev, category: categoriesData[0].id }));
+        if (validCategories.length > 0) {
+          const firstCategoryId = String(validCategories[0].id);
+          console.log('Estableciendo categoría por defecto:', firstCategoryId, validCategories[0].name);
+          setTicket(prev => ({ ...prev, category: firstCategoryId }));
         }
       } catch (error) {
         console.error('Failed to fetch categories:', error);
@@ -55,6 +63,8 @@ const CreateTicket: React.FC = () => {
           description: "Could not load ticket categories. Please try again later.",
           variant: "destructive",
         });
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -152,22 +162,38 @@ const CreateTicket: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <FormLabel htmlFor="category">Category <span className="text-destructive">*</span></FormLabel>
-                <Select 
-                  value={ticket.category} 
-                  onValueChange={(value) => handleSelectChange('category', value)}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger id="category">
-                    <SelectValue placeholder="Select a category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(category => (
-                      <SafeSelectItem key={category.id} value={category.id || "_empty_"}>
-                        {category.name}
-                      </SafeSelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {isLoading ? (
+                  <div className="flex items-center space-x-2 py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm text-muted-foreground">Loading categories...</span>
+                  </div>
+                ) : (
+                  <Select 
+                    value={ticket.category} 
+                    onValueChange={(value) => handleSelectChange('category', value)}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id="category" className="w-full">
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.length === 0 ? (
+                        <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                          No categories available
+                        </div>
+                      ) : (
+                        categories.map(category => (
+                          <SafeSelectItem 
+                            key={`category-${category.id}`} 
+                            value={String(category.id)}
+                          >
+                            {category.name}
+                          </SafeSelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -181,11 +207,11 @@ const CreateTicket: React.FC = () => {
                     <SelectValue placeholder="Select priority" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SafeSelectItem value="_empty_">Select Priority</SafeSelectItem>
-                    <SafeSelectItem value="low">Low</SafeSelectItem>
-                    <SafeSelectItem value="medium">Medium</SafeSelectItem>
-                    <SafeSelectItem value="high">High</SafeSelectItem>
-                    <SafeSelectItem value="urgent">Urgent</SafeSelectItem>
+                    <SafeSelectItem key="empty" value="_empty_">Select Priority</SafeSelectItem>
+                    <SafeSelectItem key="low" value="low">Low</SafeSelectItem>
+                    <SafeSelectItem key="medium" value="medium">Medium</SafeSelectItem>
+                    <SafeSelectItem key="high" value="high">High</SafeSelectItem>
+                    <SafeSelectItem key="urgent" value="urgent">Urgent</SafeSelectItem>
                   </SelectContent>
                 </Select>
               </div>
