@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -23,7 +22,7 @@ import {
   HelpCircle,
   Loader2
 } from 'lucide-react';
-import zohoService from '@/services/zohoService';
+import { zohoService } from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
 
 // Type definitions
@@ -61,11 +60,11 @@ const KnowledgeBase: React.FC = () => {
         const categoriesData = await zohoService.getCategories();
         
         // Transform categories data to match our interface
-        const formattedCategories: Category[] = categoriesData.map((name, index) => ({
-          id: `cat-${index + 1}`,
-          name,
+        const formattedCategories: Category[] = categoriesData.map((category, index) => ({
+          id: category.id || `cat-${index + 1}`,
+          name: category.name,
           articleCount: Math.floor(Math.random() * 20) + 1,
-          icon: getCategoryIcon(name)
+          icon: getCategoryIcon(category.name)
         }));
         
         setCategories(formattedCategories);

@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { fromJS, Map as ImmutableMap } from 'immutable';
-import zohoService from '../../services/zohoService';
+import { zohoService } from '../../services/zohoService';
 import { fetchReportsOverview as fetchReportsOverviewService } from '../../services/dashboardProjectionService';
 
 // Define state interfaces with immutable structures

@@ -23,6 +23,7 @@ import {
   ImmutableCategory,
   ImmutableDashboardStats,
   ImmutableFilters,
+  ZohoContact
 } from '../core/models/zoho.types';
 import { toImmutableTicket, toImmutableComment, toImmutableCategory, toImmutableFilters } from '../core/models/zoho.types';
 
@@ -130,16 +131,42 @@ const addComment = async (ticketId: string, commentData: ZohoCommentInput): Prom
  */
 const createTicket = async (ticketData: ZohoTicketInput): Promise<ZohoTicket> => {
   try {
+    console.log('Enviando datos del ticket al backend:', JSON.stringify(ticketData));
+    
     // Make the API request through the backend proxy
     const response = await apiClient.post('/api/zoho/tickets', ticketData);
     
-    // Transform the ticket data
-    const immutableTicket = transformTicket(response.get('data', Map()).toJS());
+    console.log('Respuesta completa del servidor:', response?.toString().substring(0, 500));
     
-    // Return the ticket data
-    return toJS(immutableTicket) as ZohoTicket;
+    // Verificar si tenemos una respuesta con la estructura esperada
+    if (!response) {
+      throw new Error('No se recibió respuesta del servidor');
+    }
+    
+    // Si la respuesta tiene un campo ticket, extraerlo (formato de n8n)
+    if (response.has('ticket')) {
+      console.log('Encontrada estructura ticket en respuesta directa');
+      const ticketData = response.get('ticket', Map());
+      return toJS(ticketData) as ZohoTicket;
+    }
+    
+    // Si la respuesta tiene datos dentro de data (formato API)
+    if (response.has('data')) {
+      console.log('Encontrada estructura data en respuesta');
+      // Transform the ticket data
+      const ticketData = response.get('data', Map());
+      const immutableTicket = transformTicket(ticketData.toJS());
+      
+      // Return the ticket data
+      return toJS(immutableTicket) as ZohoTicket;
+    }
+    
+    // Si no encontramos ninguna estructura reconocible, devolver lo que tengamos
+    console.warn('Estructura de respuesta no reconocida, intentando convertir toda la respuesta');
+    return toJS(response) as ZohoTicket;
   } catch (error) {
     console.error('Error creating ticket:', error);
+    console.error('Stack trace:', error.stack);
     throw error;
   }
 };
@@ -165,57 +192,193 @@ const getDashboardStats = async (): Promise<ZohoDashboardStats> => {
 };
 
 /**
- * Get categories
+ * Get Zoho Departments/Categories
  * Uses backend proxy to avoid CORS issues
+ * Note: These are returned as "categories" for backward compatibility with the UI
  */
 const getCategories = async (): Promise<ZohoCategory[]> => {
   try {
+    console.log('Fetching Zoho departments/categories...');
+    
     // Make the API request through the backend proxy
     const response = await apiClient.get('/api/zoho/categories');
     
-    // Acceder al array de categorías dentro de la estructura de respuesta
-    // El backend devuelve { categories: [...] }
-    const categoriesData = response.get('categories', List());
+    console.log('Raw response structure:', response?.toString().substring(0, 300));
     
-    console.log('Categorías recibidas (raw):', categoriesData.toJS());
-    
-    // Si no hay categorías, devolver un array vacío
-    if (!categoriesData || !categoriesData.size) {
-      console.warn('No se encontraron categorías');
+    // La respuesta puede tener las categorías bajo la clave 'categories' o 'data'
+    let categoriesData;
+    if (response && response.has('categories')) {
+      categoriesData = response.get('categories', List());
+      console.log('Found categories under "categories" key');
+    } else if (response && response.has('data')) {
+      categoriesData = response.get('data', List());
+      console.log('Found categories under "data" key');
+    } else {
+      console.warn('Unexpected response structure - no categories found:', 
+        response?.toString().substring(0, 200));
       return [];
     }
     
-    // Transform the categories data to ensure they have the correct format
-    const categories = categoriesData.map((item) => {
-      // Ensure we have valid id and name
-      const id = item.get('id', '');
-      const name = item.get('name', '');
-      
-      return {
-        id: String(id),
-        name: String(name),
-        description: item.get('description', ''),
-        isDefault: item.get('isDefault', false)
-      };
-    }).toArray();
+    console.log('Categories data:', categoriesData?.toString().substring(0, 200));
     
-    console.log('Categorías procesadas:', categories);
+    if (!categoriesData || !List.isList(categoriesData) || categoriesData.isEmpty()) {
+      console.warn('No valid categories data found');
+      return [];
+    }
     
-    // Return plain JavaScript objects, not Immutable structures
-    return categories;
+    // Transform the data into categories format
+    // Each category should have an id and name at minimum
+    const immutableCategories = List<ImmutableCategory>(
+      categoriesData
+        .map((item: any) => {
+          if (!Map.isMap(item)) {
+            console.warn('Item is not a Map:', item);
+            return null;
+          }
+          
+          // Ensure we're getting the id and name fields
+          const id = item.get('id') || '';
+          const name = item.get('name') || '';
+          
+          console.log(`Processing category: ID=${id}, Name=${name}`);
+          
+          if (!id || !name) {
+            console.warn('Missing required fields in category:', item.toString());
+            return null;
+          }
+          
+          return Map({
+            id: id,
+            name: name,
+            // Store the original data for reference if needed
+            departmentId: id
+          });
+        })
+        .filter((item: any) => item !== null)
+        .toArray()
+    );
+    
+    console.log(`Processed ${immutableCategories.size} valid categories`);
+    
+    // Return the categories data
+    return immutableCategories.toArray().map(category => toJS(category) as ZohoCategory);
   } catch (error) {
     console.error('Error fetching categories:', error);
     throw error;
   }
 };
 
+/**
+ * Get Zoho Contacts
+ * Uses backend proxy to avoid CORS issues
+ */
+const getContacts = async (): Promise<ZohoContact[]> => {
+  try {
+    console.log('Fetching Zoho contacts...');
+    
+    // Make the API request through the backend proxy
+    const response = await apiClient.get('/api/zoho/contacts');
+    
+    console.log('Raw contacts response:', response?.toString().substring(0, 300));
+    
+    // Check if we have valid data in the response
+    if (!response) {
+      console.warn('No response received from contacts API');
+      return [];
+    }
+    
+    // Verificamos si tenemos la estructura con validContacts (estructura de n8n)
+    if (response.has('validContacts')) {
+      console.log('Found validContacts in response');
+      const contactsData = response.get('validContacts', List());
+      
+      if (!List.isList(contactsData) || contactsData.isEmpty()) {
+        console.warn('No valid contacts found in validContacts');
+        return [];
+      }
+      
+      console.log(`Processing ${contactsData.size} contacts from validContacts...`);
+      
+      // Map each contact to proper structure
+      const contacts = contactsData.map((item: any) => {
+        if (!Map.isMap(item)) {
+          console.warn('Contact item is not a Map:', item);
+          return null;
+        }
+        
+        const id = item.get('id', '') as string;
+        const name = item.get('name', '') as string;
+        const email = item.get('email', '') as string;
+        const phone = item.get('phone', '') as string;
+        
+        return {
+          id,
+          name,
+          email,
+          phone
+        };
+      })
+      .filter((contact: any) => contact !== null && contact.id)
+      .toArray() as ZohoContact[];
+      
+      console.log(`Returned ${contacts.length} valid contacts from validContacts`);
+      return contacts;
+    }
+    // Verificamos estructura alternativa con data
+    else if (response.has('data')) {
+      const contactsData = response.get('data', List());
+      
+      if (!List.isList(contactsData) || contactsData.isEmpty()) {
+        console.warn('No valid contacts data found');
+        return [];
+      }
+      
+      console.log(`Processing ${contactsData.size} contacts from data...`);
+      
+      // Map each contact to proper structure
+      const contacts = contactsData.map((item: any) => {
+        if (!Map.isMap(item)) {
+          console.warn('Contact item is not a Map:', item);
+          return null;
+        }
+        
+        const id = item.get('id', '') as string;
+        const name = item.get('name', '') as string;
+        const email = item.get('email', '') as string;
+        const phone = item.get('phone', '') as string;
+        
+        return {
+          id,
+          name,
+          email,
+          phone
+        };
+      })
+      .filter((contact: any) => contact !== null && contact.id)
+      .toArray() as ZohoContact[];
+      
+      console.log(`Returned ${contacts.length} valid contacts from data`);
+      return contacts;
+    } 
+    else {
+      console.warn('Unexpected contacts response structure - no validContacts or data found:', 
+        response?.toString().substring(0, 200));
+      return [];
+    }
+  } catch (error) {
+    console.error('Error fetching contacts:', error);
+    throw error;
+  }
+};
+
 // Export the service functions
-export default {
+export const zohoService = {
   authenticateUser,
   getTickets,
   getTicketById,
   addComment,
   createTicket,
   getDashboardStats,
-  getCategories
+  getCategories,
+  getContacts
 };

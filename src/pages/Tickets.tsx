@@ -33,7 +33,7 @@ import {
   SortAsc, 
   SortDesc 
 } from 'lucide-react';
-import zohoService from '@/services/zohoService';
+import { zohoService } from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ZohoCategory, ZohoTicket, ZohoFilters } from '@/core/models/zoho.types';

@@ -22,7 +22,7 @@ import {
   ChevronUp,
   ChevronDown
 } from 'lucide-react';
-import zohoService from '@/services/zohoService';
+import { zohoService } from '@/services/zohoService';
 import { toJS } from '@/core/logic/zohoLogic';
 
 // Type definitions for immutable structures

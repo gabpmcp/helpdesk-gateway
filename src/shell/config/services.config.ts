@@ -1,4 +1,4 @@
-import zohoService from '../../services/zohoService';
+import { zohoService } from '../../services/zohoService';
 import { ZohoFilters, ZohoCommentInput } from '../../core/models/zoho.types';
 import { configuredAuthTransition } from './auth.config';
 

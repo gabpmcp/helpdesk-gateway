@@ -1,40 +1,47 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardFooter, 
-  CardHeader, 
-  CardTitle 
-} from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label as FormLabel } from '@/components/ui/label';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { 
-  Select, 
-  SelectContent, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { SafeSelectItem } from "@/components/ui/safe-select-item";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Separator } from '@/components/ui/separator';
+import { SafeSelectItem } from '@/components/ui/safe-select-item';
 import { ArrowLeft, Loader2, Paperclip } from 'lucide-react';
-import zohoService from '@/services/zohoService';
+import { zohoService } from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
-import { ZohoCategory, ZohoTicketInput } from '@/core/models/zoho.types';
+import { ZohoCategory, ZohoContact, ZohoTicketInput } from '@/core/models/zoho.types';
 
 const CreateTicket: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [categories, setCategories] = useState<ZohoCategory[]>([]);
+  const [contacts, setContacts] = useState<ZohoContact[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(true);
   const [ticket, setTicket] = useState<ZohoTicketInput>({
     subject: '',
     description: '',
     priority: 'medium',
     category: '',
+    departmentId: '',
+    contactId: '',
     status: 'new', 
     dueDate: '' 
   });
@@ -44,7 +51,7 @@ const CreateTicket: React.FC = () => {
       try {
         setIsLoading(true);
         const categoriesData = await zohoService.getCategories();
-        console.log('Categorías obtenidas en CreateTicket:', categoriesData);
+        console.log('Departamentos obtenidos en CreateTicket:', categoriesData);
         
         // Filtrar categorías válidas
         const validCategories = categoriesData.filter(cat => cat && cat.id && cat.name);
@@ -53,14 +60,18 @@ const CreateTicket: React.FC = () => {
         // Set the first category as default if available
         if (validCategories.length > 0) {
           const firstCategoryId = String(validCategories[0].id);
-          console.log('Estableciendo categoría por defecto:', firstCategoryId, validCategories[0].name);
-          setTicket(prev => ({ ...prev, category: firstCategoryId }));
+          console.log('Estableciendo departamento por defecto:', firstCategoryId, validCategories[0].name);
+          setTicket(prev => ({ 
+            ...prev, 
+            category: firstCategoryId,
+            departmentId: firstCategoryId // Aseguramos que departmentId también se establezca
+          }));
         }
       } catch (error) {
-        console.error('Failed to fetch categories:', error);
+        console.error('Failed to fetch departments:', error);
         toast({
-          title: "Error loading categories",
-          description: "Could not load ticket categories. Please try again later.",
+          title: "Error loading departments",
+          description: "Could not load ticket departments. Please try again later.",
           variant: "destructive",
         });
       } finally {
@@ -71,12 +82,46 @@ const CreateTicket: React.FC = () => {
     fetchCategories();
   }, [toast]);
 
+  useEffect(() => {
+    const fetchContacts = async () => {
+      try {
+        setIsLoadingContacts(true);
+        const contactsData = await zohoService.getContacts();
+        console.log('Contactos obtenidos en CreateTicket:', contactsData);
+        
+        // Filtrar contactos válidos
+        const validContacts = contactsData.filter(contact => contact && contact.id && contact.name);
+        setContacts(validContacts);
+        
+        // Set the first contact as default if available
+        if (validContacts.length > 0) {
+          const firstContactId = String(validContacts[0].id);
+          console.log('Estableciendo contacto por defecto:', firstContactId, validContacts[0].name);
+          setTicket(prev => ({ 
+            ...prev, 
+            contactId: firstContactId
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch contacts:', error);
+        toast({
+          title: "Error loading contacts",
+          description: "Could not load Zoho contacts. Please try again later.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingContacts(false);
+      }
+    };
+
+    fetchContacts();
+  }, [toast]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setTicket(prev => ({ ...prev, [name]: value }));
   };
 
-  // Function to handle select field changes
   const handleSelectChange = (field: string, value: string) => {
     // Convertir "_empty_" a cadena vacía si es necesario
     const normalizedValue = value === "_empty_" ? "" : value;
@@ -87,10 +132,28 @@ const CreateTicket: React.FC = () => {
     });
   };
 
+  const handleCategoryChange = (value: string) => {
+    console.log('Categoría seleccionada:', value);
+    // Cuando cambia la categoría, también actualizamos el departmentId
+    setTicket(prev => ({ 
+      ...prev, 
+      category: value,
+      departmentId: value // El ID de la categoría es también el departmentId 
+    }));
+  };
+
+  const handleContactChange = (value: string) => {
+    console.log('Contacto seleccionado:', value);
+    setTicket(prev => ({ 
+      ...prev, 
+      contactId: value
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!ticket.subject.trim() || !ticket.description.trim() || !ticket.category) {
+    if (!ticket.subject.trim() || !ticket.description.trim() || !ticket.category || !ticket.contactId) {
       toast({
         title: "Missing information",
         description: "Please fill in all required fields.",
@@ -102,26 +165,58 @@ const CreateTicket: React.FC = () => {
     setIsSubmitting(true);
     
     try {
+      // Validar que los campos requeridos estén presentes
+      if (!ticket.subject) {
+        throw new Error("El asunto del ticket es obligatorio");
+      }
+      
+      // Asegurar que departmentId tiene un valor válido
+      if (!ticket.departmentId && ticket.category) {
+        ticket.departmentId = ticket.category; // En caso de que no se haya asignado
+      }
+      
+      // Asegurar que contactId está presente
+      if (!ticket.contactId) {
+        throw new Error("Es necesario seleccionar un contacto");
+      }
+      
       const ticketInput: ZohoTicketInput = {
         ...ticket,
         dueDate: ticket.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
       };
       
+      console.log("Enviando solicitud de creación de ticket:", ticketInput);
+      
       const newTicket = await zohoService.createTicket(ticketInput);
       
+      // Verificar que el ticket se haya creado correctamente
+      if (!newTicket || !newTicket.id) {
+        throw new Error("No se pudo obtener la información del ticket creado");
+      }
+      
+      console.log("Ticket creado exitosamente:", newTicket);
+      
       toast({
-        title: "Ticket created",
-        description: `Your ticket #${newTicket.id} has been created successfully.`,
+        title: "Ticket creado",
+        description: `Tu ticket #${newTicket.ticketNumber || newTicket.id} ha sido creado exitosamente.`,
+        duration: 5000,
       });
       
+      // Redirigir al detalle del ticket
       navigate(`/tickets/${newTicket.id}`);
-    } catch (error) {
+    } catch (error: any) {
+      // Manejo detallado de errores
+      const errorMessage = error?.message || "No se pudo crear tu ticket. Por favor intenta más tarde.";
+      
+      console.error("Error al crear el ticket:", error);
+      
       toast({
-        title: "Error creating ticket",
-        description: "Could not create your ticket. Please try again later.",
+        title: "Error al crear ticket",
+        description: errorMessage,
         variant: "destructive",
+        duration: 7000,
       });
-      console.error("Ticket creation error:", error);
+      
       setIsSubmitting(false);
     }
   };
@@ -147,7 +242,7 @@ const CreateTicket: React.FC = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <FormLabel htmlFor="subject">Subject <span className="text-destructive">*</span></FormLabel>
+              <Label htmlFor="subject">Subject <span className="text-destructive">*</span></Label>
               <Input 
                 id="subject" 
                 name="subject"
@@ -159,45 +254,85 @@ const CreateTicket: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Category selector */}
               <div className="space-y-2">
-                <FormLabel htmlFor="category">Category <span className="text-destructive">*</span></FormLabel>
-                {isLoading ? (
-                  <div className="flex items-center space-x-2 py-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm text-muted-foreground">Loading categories...</span>
-                  </div>
-                ) : (
-                  <Select 
-                    value={ticket.category} 
-                    onValueChange={(value) => handleSelectChange('category', value)}
-                    disabled={isSubmitting}
-                  >
-                    <SelectTrigger id="category" className="w-full">
-                      <SelectValue placeholder="Select a category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.length === 0 ? (
-                        <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                          No categories available
-                        </div>
-                      ) : (
-                        categories.map(category => (
+                <Label htmlFor="category">Category <span className="text-destructive">*</span></Label>
+                <div>
+                  {isLoading ? (
+                    <div className="flex items-center space-x-2 py-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm text-muted-foreground">Loading categories...</span>
+                    </div>
+                  ) : categories.length === 0 ? (
+                    <div className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+                      No categories available
+                    </div>
+                  ) : (
+                    <Select 
+                      value={ticket.category} 
+                      onValueChange={(value) => handleCategoryChange(value)}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="category" className="w-full">
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map(category => (
                           <SafeSelectItem 
-                            key={`category-${category.id}`} 
-                            value={String(category.id)}
+                            key={category.id} 
+                            value={category.id}
                           >
                             {category.name}
                           </SafeSelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
               </div>
 
+              {/* Contact selector */}
               <div className="space-y-2">
-                <FormLabel htmlFor="priority">Priority</FormLabel>
+                <Label htmlFor="contact">Contact <span className="text-destructive">*</span></Label>
+                <div>
+                  {isLoadingContacts ? (
+                    <div className="flex items-center space-x-2 py-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm text-muted-foreground">Loading contacts...</span>
+                    </div>
+                  ) : contacts.length === 0 ? (
+                    <div className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+                      No contacts available
+                    </div>
+                  ) : (
+                    <Select 
+                      value={ticket.contactId} 
+                      onValueChange={(value) => handleContactChange(value)}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="contact" className="w-full">
+                        <SelectValue placeholder="Select a contact" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {contacts.map(contact => (
+                          <SafeSelectItem 
+                            key={contact.id} 
+                            value={contact.id}
+                          >
+                            {contact.name} {contact.email ? `(${contact.email})` : ''}
+                          </SafeSelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="priority">Priority</Label>
                 <Select 
                   value={ticket.priority} 
                   onValueChange={(value) => handleSelectChange('priority', value)}
@@ -218,7 +353,7 @@ const CreateTicket: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <FormLabel htmlFor="description">Description <span className="text-destructive">*</span></FormLabel>
+              <Label htmlFor="description">Description <span className="text-destructive">*</span></Label>
               <Textarea 
                 id="description" 
                 name="description"

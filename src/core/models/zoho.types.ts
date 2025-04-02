@@ -34,6 +34,14 @@ export interface ZohoCategoryRecord {
   translationKey?: string;
 }
 
+export interface ZohoContactRecord {
+  id: ZohoId;
+  name: string;
+  email?: string;
+  phone?: string;
+  type?: string;
+}
+
 export interface ZohoDashboardStatsRecord {
   totalTickets: number;
   openTickets: number;
@@ -79,6 +87,7 @@ export interface ZohoConfigRecord {
 export type ImmutableTicket = Map<string, any>;
 export type ImmutableComment = Map<string, any>;
 export type ImmutableCategory = Map<string, any>;
+export type ImmutableContact = Map<string, any>;
 export type ImmutableDashboardStats = Map<string, any>;
 export type ImmutableFilters = Map<string, any>;
 export type ImmutableAuthResponse = Map<string, any>;
@@ -111,6 +120,14 @@ export const CategoryRecord = ImmutableRecord<ZohoCategoryRecord>({
   id: '',
   name: '',
   translationKey: undefined
+});
+
+export const ContactRecord = ImmutableRecord<ZohoContactRecord>({
+  id: '',
+  name: '',
+  email: undefined,
+  phone: undefined,
+  type: undefined
 });
 
 export const DashboardStatsRecord = ImmutableRecord<ZohoDashboardStatsRecord>({
@@ -185,6 +202,7 @@ export interface ZohoTicket {
   dueDate: string;
   createdTime: string;
   modifiedTime: string;
+  ticketNumber?: string;
   comments: ZohoComment[];
 }
 
@@ -200,6 +218,14 @@ export interface ZohoCategory {
   id: string;
   name: string;
   translationKey?: string;
+}
+
+export interface ZohoContact {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  type?: string;
 }
 
 export interface ZohoDashboardStats {
@@ -259,6 +285,8 @@ export interface ZohoAuthResponse {
 
 export type ZohoTicketInput = Omit<ZohoTicket, 'id' | 'createdTime' | 'modifiedTime' | 'comments'> & {
   dueDate?: string;
+  departmentId?: string;
+  contactId?: string;
 };
 
 export type ZohoCommentInput = Omit<ZohoComment, 'id' | 'createdTime' | 'createdBy'>;
@@ -276,6 +304,9 @@ export const toImmutableComment = (comment: ZohoComment): ImmutableComment =>
 export const toImmutableCategory = (category: ZohoCategory): ImmutableCategory => 
   Map(category);
 
+export const toImmutableContact = (contact: ZohoContact): ImmutableContact => 
+  Map(contact);
+
 export const toImmutableFilters = (filters: ZohoFilters): ImmutableFilters => 
   Map(filters);
 
@@ -289,6 +320,7 @@ export const fromImmutableTicket = (ticket: ImmutableTicket): ZohoTicket => ({
   dueDate: ticket.get('dueDate'),
   createdTime: ticket.get('createdTime'),
   modifiedTime: ticket.get('modifiedTime'),
+  ticketNumber: ticket.get('ticketNumber'),
   comments: ticket.get('comments', List()).toArray().map(fromImmutableComment)
 });
 
@@ -298,4 +330,12 @@ export const fromImmutableComment = (comment: ImmutableComment): ZohoComment => 
   createdBy: comment.get('createdBy'),
   createdTime: comment.get('createdTime'),
   isPublic: comment.get('isPublic')
+});
+
+export const fromImmutableContact = (contact: ImmutableContact): ZohoContact => ({
+  id: contact.get('id'),
+  name: contact.get('name'),
+  email: contact.get('email'),
+  phone: contact.get('phone'),
+  type: contact.get('type')
 });
