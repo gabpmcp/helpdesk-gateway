@@ -122,31 +122,91 @@ const getTickets = async (filters: ZohoFilters = {}): Promise<TicketsResponse> =
     };
   } catch (error) {
     console.error('Error fetching tickets:', error);
-    throw error instanceof Error ? 
-      error : 
-      new Error('Failed to fetch tickets');
+    throw error;
   }
 };
 
 /**
- * Get a ticket by ID
+ * Transform ticket data from API to application format
+ * This is a pure function that handles possible undefined values defensively
+ * @param ticket - Ticket data from API
+ * @returns Transformed ticket data
+ */
+const transformTicket = (ticket: Map<string, any>): Map<string, any> => {
+  // Si el ticket es null o undefined, devolver un mapa vacío
+  if (!ticket) return Map({});
+  
+  // Log detallado para depuración
+  console.log('Transforming ticket data:', ticket.toJS ? ticket.toJS() : ticket);
+  
+  // Crear una estructura básica de ticket con valores por defecto
+  const transformedTicket = Map({
+    id: ticket.get('id', ''),
+    subject: ticket.get('subject', 'Sin título'),
+    description: ticket.get('description', ''),
+    status: ticket.get('status', 'Open'),
+    priority: ticket.get('priority', 'Medium'),
+    category: ticket.get('category', ticket.get('departmentId', 'General')),
+    createdTime: ticket.get('createdTime', new Date().toISOString()),
+    modifiedTime: ticket.get('modifiedTime', ticket.get('createdTime', new Date().toISOString())),
+    dueDate: ticket.get('dueDate', ''),
+    departmentId: ticket.get('departmentId', ''),
+    contactId: ticket.get('contactId', ''),
+    assigneeId: ticket.get('assigneeId', ''),
+    comments: ticket.get('comments', List([])),
+    isOverdue: ticket.get('isOverdue', false),
+    isEscalated: ticket.get('isEscalated', false)
+  });
+  
+  return transformedTicket;
+};
+
+/**
+ * Get a specific ticket by ID
  * Uses backend proxy to avoid CORS issues
- * @param id - Ticket ID
+ * @param ticketId - ID of the ticket to fetch
  * @returns Promise with ticket data
  */
-const getTicketById = async (id: string): Promise<ZohoTicket> => {
+const getTicketById = async (ticketId: string): Promise<ZohoTicket | null> => {
   try {
+    console.log(`Fetching ticket by ID: ${ticketId}`);
+    
     // Make the API request through the backend proxy
-    const response = await apiClient.get(`/api/zoho/tickets/${id}`);
+    const response = await apiClient.get(`/api/zoho/tickets/${ticketId}`);
     
-    // Transform the ticket data
-    const immutableTicket = transformTicket(fromJS(response.get('data', Map()).toJS()));
+    console.log('Ticket response:', response.toJS ? response.toJS() : response);
     
-    // Return the ticket data
-    return toJS(immutableTicket) as ZohoTicket;
+    // Manejar diferentes estructuras de respuesta posibles
+    let ticketData;
+    
+    if (response.has('success') && !response.get('success')) {
+      // Si hay un campo success y es false, hay un error
+      throw new Error(response.get('error', 'No se pudo obtener el ticket'));
+    } else if (response.has('ticket')) {
+      // Si la respuesta contiene el ticket en un campo ticket
+      ticketData = response.get('ticket');
+    } else if (response.has('data') && Map.isMap(response.get('data'))) {
+      // Si el ticket está en un campo data
+      ticketData = response.get('data');
+    } else if (Map.isMap(response)) {
+      // Si la respuesta es directamente el ticket
+      ticketData = response;
+    } else {
+      console.error('Formato de respuesta inesperado:', response.toJS ? response.toJS() : response);
+      throw new Error('Formato de respuesta inesperado al obtener ticket');
+    }
+    
+    // Transformar el ticket con nuestra función que maneja valores undefined
+    const transformedTicket = transformTicket(fromJS(ticketData));
+    
+    // Devolver el ticket transformado como objeto JavaScript
+    return transformedTicket.toJS() as ZohoTicket;
   } catch (error) {
-    console.error(`Error fetching ticket ${id}:`, error);
-    throw error;
+    console.error(`Error fetching ticket ${ticketId}:`, error);
+    
+    // Si no se puede obtener el ticket, devolver null en lugar de lanzar una excepción
+    // para que la UI pueda manejarlo apropiadamente
+    return null;
   }
 };
 
@@ -375,7 +435,6 @@ const getContacts = async (): Promise<ZohoContact[]> => {
     
     // Verificamos si tenemos la estructura con validContacts (estructura de n8n)
     if (response.has('validContacts')) {
-      console.log('Found validContacts in response');
       const contactsData = response.get('validContacts', List());
       
       if (!List.isList(contactsData) || contactsData.isEmpty()) {

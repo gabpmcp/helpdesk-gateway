@@ -129,11 +129,11 @@ const Tickets: React.FC = () => {
           // Asegurar que cada ticket tiene un ID único
           const ticketsWithIds = result.tickets.map((ticket, index) => {
             // Si no tiene ID, asignar uno basado en el índice
-            if (!ticket.id) {
+            if (!ticket.id || ticket.id === 'undefined') {
               return {
                 ...ticket,
-                id: `ticket-${index}`,  // ID temporal si no hay ID real
-                _generatedId: true      // Marcar como ID generado
+                id: `new-ticket-${index}`,  // ID temporal si no hay ID real
+                _generatedId: true          // Marcar como ID generado
               };
             }
             return ticket;
@@ -371,14 +371,29 @@ const Tickets: React.FC = () => {
                     // Debug para ver qué contiene cada ticket
                     console.log(`Ticket ${index}:`, ticket.toJS());
                     
+                    // Preparar navegación al detalle
+                    const handleTicketClick = () => {
+                      // Solo navegar si hay un ID para el ticket
+                      if (ticketId) {
+                        console.log(`Navegando al ticket: ${ticketId}`);
+                        navigate(`/tickets/${ticketId}`);
+                      } else {
+                        toast({
+                          title: "Error al abrir ticket",
+                          description: "Este ticket no tiene un ID válido",
+                          variant: "destructive"
+                        });
+                      }
+                    };
+                    
                     return (
                       <TableRow 
                         key={`row-${ticketId}`}
                         className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => navigate(`/tickets/${ticketId}`)}
+                        onClick={handleTicketClick}
                       >
                         <TableCell className="font-medium">
-                          {ticket.get('id') ? `#${ticket.get('id')}` : 'Sin ID'}
+                          {ticket.get('id') ? `#${ticket.get('id')}` : 'Nuevo'}
                         </TableCell>
                         <TableCell>
                           {ticket.get('subject') || 'Sin asunto'}
