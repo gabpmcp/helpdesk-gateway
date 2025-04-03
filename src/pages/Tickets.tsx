@@ -117,7 +117,30 @@ const Tickets: React.FC = () => {
       
       return Promise.resolve(zohoService.getTickets(filtersObj))
         .then(result => {
-          setTickets(fromJS(result.tickets));
+          console.log('Tickets recibidos de la API:', result.tickets);
+          
+          // Verificar si tenemos datos
+          if (!result.tickets || !Array.isArray(result.tickets)) {
+            console.error('No se recibieron tickets válidos:', result);
+            setTickets(List([]));
+            return result;
+          }
+          
+          // Asegurar que cada ticket tiene un ID único
+          const ticketsWithIds = result.tickets.map((ticket, index) => {
+            // Si no tiene ID, asignar uno basado en el índice
+            if (!ticket.id) {
+              return {
+                ...ticket,
+                id: `ticket-${index}`,  // ID temporal si no hay ID real
+                _generatedId: true      // Marcar como ID generado
+              };
+            }
+            return ticket;
+          });
+          
+          // Convertir a estructura inmutable asegurando el ID
+          setTickets(fromJS(ticketsWithIds));
           return result;
         })
         .catch(error => {
@@ -341,26 +364,40 @@ const Tickets: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tickets.map(ticket => (
-                    <TableRow 
-                      key={ticket.get('id')}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/tickets/${ticket.get('id')}`)}
-                    >
-                      <TableCell className="font-medium">#{ticket.get('id')}</TableCell>
-                      <TableCell>{ticket.get('subject')}</TableCell>
-                      <TableCell>
-                        <StatusBadge status={ticket.get('status')} />
-                      </TableCell>
-                      <TableCell>
-                        <PriorityIndicator priority={ticket.get('priority')} />
-                      </TableCell>
-                      <TableCell>{ticket.get('category')}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDateSafe(ticket.get('modifiedTime'))}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {tickets.map((ticket, index) => {
+                    // Obtener un ID para la key - usar el ID del ticket o generar uno basado en el índice
+                    const ticketId = ticket.get('id') || `ticket-${index}`;
+                    
+                    // Debug para ver qué contiene cada ticket
+                    console.log(`Ticket ${index}:`, ticket.toJS());
+                    
+                    return (
+                      <TableRow 
+                        key={`row-${ticketId}`}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => navigate(`/tickets/${ticketId}`)}
+                      >
+                        <TableCell className="font-medium">
+                          {ticket.get('id') ? `#${ticket.get('id')}` : 'Sin ID'}
+                        </TableCell>
+                        <TableCell>
+                          {ticket.get('subject') || 'Sin asunto'}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={ticket.get('status') || 'Unknown'} />
+                        </TableCell>
+                        <TableCell>
+                          <PriorityIndicator priority={ticket.get('priority') || 'Medium'} />
+                        </TableCell>
+                        <TableCell>
+                          {ticket.get('category') || ticket.get('departmentId') || 'General'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatDateSafe(ticket.get('modifiedTime') || ticket.get('createdTime'))}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
