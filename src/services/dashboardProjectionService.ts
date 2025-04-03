@@ -11,9 +11,10 @@ import { ImmutableTicket } from '../core/models/zoho.types';
 // Crear un cliente API usando el mismo método que otros servicios
 const apiClient = createApiClient();
 
-// Configuración de URLs
+// Configuración de URLs - solo para referencia, no la usamos directamente
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-const DASHBOARD_ENDPOINT = `${API_BASE_URL}/api/zoho/reports-overview`;
+// Endpoint relativo - apiClient ya agrega la URL base configurada
+const DASHBOARD_ENDPOINT = '/api/zoho/reports-overview';
 
 /**
  * Verifica si una respuesta es HTML en lugar de JSON
@@ -184,42 +185,23 @@ export const fetchDashboardOverview = async (): Promise<ImmutableMap<string, any
   try {
     console.log('[Dashboard Service] Fetching dashboard overview from backend API');
     
-    // Hacer la petición directamente al endpoint correcto
-    const response = await fetch(DASHBOARD_ENDPOINT, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include'  // Incluir credenciales (cookies) para que withCors funcione correctamente
-    });
+    // Hacer la petición a través del backend proxy
+    const response = await apiClient.get(DASHBOARD_ENDPOINT);
     
-    if (!response.ok) {
-      console.error(`[Dashboard Service] Error HTTP: ${response.status} ${response.statusText}`);
-      throw new Error(`Error fetching dashboard data: ${response.status} ${response.statusText}`);
+    // Verificar si la respuesta es válida (puede ser un Map de Immutable)
+    if (!response) {
+      throw new Error('Failed to fetch dashboard data: Empty response');
     }
     
-    // Procesar la respuesta
-    const responseText = await response.text();
-    
-    // Verificar si la respuesta es válida
-    if (!responseText || responseText.trim() === '') {
-      throw new Error('Empty response received from backend');
+    // Si la respuesta es un Map de Immutable, devolverla directamente
+    if (ImmutableMap.isMap(response)) {
+      console.log('[Dashboard Service] Successfully retrieved dashboard data');
+      return response;
     }
     
-    if (isHtmlResponse(responseText)) {
-      throw new Error('Received HTML instead of JSON from backend');
-    }
-    
-    // Parsear como JSON
-    const data = JSON.parse(responseText);
-    console.log('[Dashboard Service] Dashboard data received:', data);
-    
-    // Normalizar los datos para asegurar la estructura correcta
-    const normalizedData = normalizeData(data);
-    
-    // Convertir a estructura inmutable
-    return fromJS(normalizedData);
+    // Si no es un Map, convertirla
+    console.log('[Dashboard Service] Converting response to Immutable Map');
+    return fromJS(response);
   } catch (error) {
     console.error('[Dashboard Service] Error fetching dashboard overview:', error);
     

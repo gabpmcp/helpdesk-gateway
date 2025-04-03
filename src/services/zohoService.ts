@@ -1,7 +1,6 @@
 import { Map, List, fromJS } from 'immutable';
 import { createApiClient } from '../core/api/apiClient';
 import {
-  transformTicket,
   transformComment,
   transformCategory,
   transformDashboardStats,
@@ -26,20 +25,89 @@ import {
   ZohoContact,
   ZohoAccount
 } from '../core/models/zoho.types';
-import { toImmutableTicket, toImmutableComment, toImmutableCategory, toImmutableFilters } from '../core/models/zoho.types';
+import { toImmutableComment, toImmutableCategory, toImmutableFilters } from '../core/models/zoho.types';
+
+// Type guards y utilidades para reducir complejidad ciclomática
+// ============================================================
+
+/**
+ * Type guard para verificar si un valor es un Map de Immutable
+ * @param value - Valor a verificar
+ * @returns true si es un Map de Immutable
+ */
+const isImmutableMap = (value: any): value is Map<string, any> => 
+  value && Map.isMap(value);
+
+/**
+ * Obtiene un valor seguro de un Map inmutable o retorna un valor por defecto
+ * @param map - Map de Immutable o cualquier valor
+ * @param key - Clave a obtener
+ * @param defaultValue - Valor por defecto si map no es un Map o key no existe
+ * @returns El valor obtenido o el valor por defecto
+ */
+const safeGet = <T>(map: any, key: string, defaultValue: T): T =>
+  isImmutableMap(map) ? map.get(key, defaultValue) : defaultValue;
+
+/**
+ * Intenta convertir un valor a JS de forma segura
+ * @param value - Valor a convertir
+ * @returns Versión JS del valor o el valor original
+ */
+const safeToJS = (value: any): any =>
+  isImmutableMap(value) && typeof value.toJS === 'function' 
+    ? value.toJS() 
+    : value;
+
+/**
+ * Registra un objeto en consola de forma segura
+ * @param message - Mensaje descriptivo
+ * @param value - Valor a registrar
+ */
+const safeLog = (message: string, value: any): void =>
+  console.log(message, safeToJS(value));
+
+/**
+ * Registra un error en consola de forma segura
+ * @param message - Mensaje de error
+ * @param value - Valor a registrar
+ */
+const safeErrorLog = (message: string, value: any): void =>
+  console.error(message, safeToJS(value));
 
 // Create the API client for backend proxy
 const apiClient = createApiClient();
 
-// Service functions that combine pure logic with API calls
-const authenticateUser = async (email: string, password: string): Promise<string> => {
-  try {
-    const response = await apiClient.post('/api/auth/login', { email, password });
-    return response.get('accessToken', '');
-  } catch (error) {
-    console.error('Authentication error:', error);
-    throw error;
-  }
+/**
+ * Transform ticket data from API to application format
+ * This is a pure function that handles possible undefined values defensively
+ * @param ticket - Ticket data from API
+ * @returns Transformed ticket data
+ */
+const transformTicket = (ticket: Map<string, any>): Map<string, any> => {
+  // Si el ticket es null o undefined, devolver un mapa vacío
+  if (!ticket) return Map({});
+  
+  // Log detallado para depuración
+  safeLog('Transforming ticket data:', ticket);
+  
+  // Crear una estructura básica de ticket con valores por defecto usando safeGet
+  return Map({
+    id: safeGet(ticket, 'id', ''),
+    subject: safeGet(ticket, 'subject', 'Sin título'),
+    description: safeGet(ticket, 'description', ''),
+    status: safeGet(ticket, 'status', 'Open'),
+    priority: safeGet(ticket, 'priority', 'Medium'),
+    category: safeGet(ticket, 'category', safeGet(ticket, 'departmentId', 'General')),
+    createdTime: safeGet(ticket, 'createdTime', new Date().toISOString()),
+    modifiedTime: safeGet(ticket, 'modifiedTime', safeGet(ticket, 'createdTime', new Date().toISOString())),
+    dueDate: safeGet(ticket, 'dueDate', ''),
+    departmentId: safeGet(ticket, 'departmentId', ''),
+    contactId: safeGet(ticket, 'contactId', ''),
+    assigneeId: safeGet(ticket, 'assigneeId', ''),
+    comments: safeGet(ticket, 'comments', List([])),
+    isOverdue: safeGet(ticket, 'isOverdue', false),
+    isEscalated: safeGet(ticket, 'isEscalated', false)
+  });
 };
 
 // Interface for the response structure that includes tickets
@@ -49,6 +117,19 @@ interface TicketsResponse {
   page: number;
   timestamp: string;
 }
+
+// Service functions that combine pure logic with API calls
+const authenticateUser = async (email: string, password: string): Promise<string> => {
+  try {
+    const response = await apiClient.post('/api/auth/login', { email, password });
+    
+    // Usar safeGet para acceso seguro al token
+    return safeGet(response, 'accessToken', '');
+  } catch (error) {
+    console.error('Authentication error:', error);
+    return ''; // Valor por defecto en caso de error (programación defensiva)
+  }
+};
 
 /**
  * Get tickets with optional filters
@@ -70,96 +151,96 @@ const getTickets = async (filters: ZohoFilters = {}): Promise<TicketsResponse> =
     const queryString = new URLSearchParams(queryParams).toString();
     const url = `/api/zoho/tickets${queryString ? `?${queryString}` : ''}`;
     
+    // Log con parámetros de filtrado
     console.log(`Fetching tickets with filters: ${JSON.stringify(filters)}`);
+    
+    // Obtener respuesta del API
     const response = await apiClient.get(url);
     
-    // Adaptable parsing based on response structure
-    let ticketsData;
-    let metaData = Map({
-      total: 0,
-      from: 0,
-      limit: 50
-    });
+    // Log seguro de respuesta
+    safeLog('Tickets response:', response);
     
-    // Manejar diferentes estructuras de respuesta posibles
-    if (response.has('success') && !response.get('success')) {
-      // Si hay un campo success y es false, hay un error
-      throw new Error(response.get('error', 'Unknown error occurred'));
-    } else if (response.has('tickets')) {
-      // Si la respuesta contiene un array de tickets directamente
-      ticketsData = response.get('tickets');
-      // Si hay metadatos disponibles, usarlos
-      if (response.has('meta')) {
-        metaData = response.get('meta');
-      }
-    } else if (response.has('data') && List.isList(response.get('data'))) {
-      // Algunos endpoints devuelven los tickets dentro de un campo data
-      ticketsData = response.get('data');
-    } else if (List.isList(response)) {
-      // Si la respuesta es directamente una lista
-      ticketsData = response;
-    } else {
-      // En último caso, intentar con el campo 'items' o usar la respuesta completa
-      ticketsData = response.get('items', response);
-    }
-    
-    // Asegurar que ticketsData sea una List de Immutable
-    const ticketsList = List.isList(ticketsData) ? ticketsData : List(ticketsData || []);
-    
-    // Transform tickets to immutable structure
-    const tickets = ticketsList
-      .map((ticket: any) => transformTicket(fromJS(ticket)))
-      .toList();
-    
-    console.log(`Successfully fetched ${tickets.size} tickets`);
-    
-    // Return tickets and metadata
-    return {
-      tickets: tickets.toJS() as ZohoTicket[],
-      total: metaData.get('total', tickets.size),
-      page: Math.max(1, metaData.get('from', 0) / Math.max(1, metaData.get('limit', 50))),
-      timestamp: response.get('timestamp', new Date().toISOString())
-    };
+    // Procesamiento inmutable con pipeline funcional
+    return processTicketsResponse(response);
   } catch (error) {
     console.error('Error fetching tickets:', error);
-    throw error;
+    // Respuesta por defecto en caso de error (programación defensiva)
+    return {
+      tickets: [],
+      total: 0,
+      page: 1,
+      timestamp: new Date().toISOString()
+    };
   }
 };
 
 /**
- * Transform ticket data from API to application format
- * This is a pure function that handles possible undefined values defensively
- * @param ticket - Ticket data from API
- * @returns Transformed ticket data
+ * Función pura para procesar la respuesta de tickets
+ * @param response - Respuesta del API
+ * @returns Datos de tickets procesados
  */
-const transformTicket = (ticket: Map<string, any>): Map<string, any> => {
-  // Si el ticket es null o undefined, devolver un mapa vacío
-  if (!ticket) return Map({});
+const processTicketsResponse = (response: any): TicketsResponse => {
+  // Verificación básica de la estructura de respuesta
+  if (!isImmutableMap(response)) {
+    console.warn('Tickets response is not an Immutable Map');
+    return defaultTicketsResponse();
+  }
   
-  // Log detallado para depuración
-  console.log('Transforming ticket data:', ticket.toJS ? ticket.toJS() : ticket);
+  // Extraer tickets según la estructura de la respuesta
+  let ticketsData;
   
-  // Crear una estructura básica de ticket con valores por defecto
-  const transformedTicket = Map({
-    id: ticket.get('id', ''),
-    subject: ticket.get('subject', 'Sin título'),
-    description: ticket.get('description', ''),
-    status: ticket.get('status', 'Open'),
-    priority: ticket.get('priority', 'Medium'),
-    category: ticket.get('category', ticket.get('departmentId', 'General')),
-    createdTime: ticket.get('createdTime', new Date().toISOString()),
-    modifiedTime: ticket.get('modifiedTime', ticket.get('createdTime', new Date().toISOString())),
-    dueDate: ticket.get('dueDate', ''),
-    departmentId: ticket.get('departmentId', ''),
-    contactId: ticket.get('contactId', ''),
-    assigneeId: ticket.get('assigneeId', ''),
-    comments: ticket.get('comments', List([])),
-    isOverdue: ticket.get('isOverdue', false),
-    isEscalated: ticket.get('isEscalated', false)
+  // Caso 1: tickets en campo 'tickets'
+  if (response.has('tickets')) {
+    ticketsData = safeGet(response, 'tickets', List());
+  }
+  // Caso 2: tickets en campo 'data'
+  else if (response.has('data')) {
+    ticketsData = safeGet(response, 'data', List());
+  }
+  // Caso 3: la respuesta misma es la lista de tickets
+  else if (List.isList(response)) {
+    ticketsData = response;
+  }
+  // Ningún caso válido
+  else {
+    safeErrorLog('Unexpected tickets response format:', response);
+    return defaultTicketsResponse();
+  }
+  
+  // Transformar tickets de forma inmutable
+  const transformedTickets = ticketsData
+    .map((ticket: any) => transformTicket(fromJS(ticket)))
+    .toList();
+  
+  // Extraer metadatos con valores por defecto
+  const metaData = Map({
+    total: safeGet(response, 'total', transformedTickets.size),
+    page: safeGet(response, 'page', 1),
+    timestamp: safeGet(response, 'timestamp', new Date().toISOString())
   });
   
-  return transformedTicket;
+  // Log de procesamiento
+  console.log(`Successfully processed ${transformedTickets.size} tickets`);
+  
+  // Convertir a formato de respuesta esperado
+  return {
+    tickets: transformedTickets.toJS() as ZohoTicket[],
+    total: metaData.get('total', 0),
+    page: metaData.get('page', 1),
+    timestamp: metaData.get('timestamp', '')
+  };
 };
+
+/**
+ * Función auxiliar para crear una respuesta por defecto
+ * @returns Respuesta de tickets por defecto
+ */
+const defaultTicketsResponse = (): TicketsResponse => ({
+  tickets: [],
+  total: 0,
+  page: 1,
+  timestamp: new Date().toISOString()
+});
 
 /**
  * Get a specific ticket by ID
@@ -171,43 +252,74 @@ const getTicketById = async (ticketId: string): Promise<ZohoTicket | null> => {
   try {
     console.log(`Fetching ticket by ID: ${ticketId}`);
     
-    // Make the API request through the backend proxy
+    // Obtener respuesta del API
     const response = await apiClient.get(`/api/zoho/tickets/${ticketId}`);
     
-    console.log('Ticket response:', response.toJS ? response.toJS() : response);
-    
-    // Manejar diferentes estructuras de respuesta posibles
-    let ticketData;
-    
-    if (response.has('success') && !response.get('success')) {
-      // Si hay un campo success y es false, hay un error
-      throw new Error(response.get('error', 'No se pudo obtener el ticket'));
-    } else if (response.has('ticket')) {
-      // Si la respuesta contiene el ticket en un campo ticket
-      ticketData = response.get('ticket');
-    } else if (response.has('data') && Map.isMap(response.get('data'))) {
-      // Si el ticket está en un campo data
-      ticketData = response.get('data');
-    } else if (Map.isMap(response)) {
-      // Si la respuesta es directamente el ticket
-      ticketData = response;
-    } else {
-      console.error('Formato de respuesta inesperado:', response.toJS ? response.toJS() : response);
-      throw new Error('Formato de respuesta inesperado al obtener ticket');
-    }
-    
-    // Transformar el ticket con nuestra función que maneja valores undefined
-    const transformedTicket = transformTicket(fromJS(ticketData));
-    
-    // Devolver el ticket transformado como objeto JavaScript
-    return transformedTicket.toJS() as ZohoTicket;
+    // Pipeline de procesamiento funcional - sin variables mutables
+    return processTicketResponse(response, ticketId);
   } catch (error) {
     console.error(`Error fetching ticket ${ticketId}:`, error);
-    
-    // Si no se puede obtener el ticket, devolver null en lugar de lanzar una excepción
-    // para que la UI pueda manejarlo apropiadamente
+    return null; // Valor por defecto seguro
+  }
+};
+
+/**
+ * Función pura para procesar la respuesta del API y extraer los datos del ticket
+ * @param response - Respuesta del API
+ * @param ticketId - ID del ticket (para logs)
+ * @returns Datos del ticket procesados
+ */
+const processTicketResponse = (response: any, ticketId: string): ZohoTicket | null => {
+  // Logs para depuración usando utilidad segura
+  safeLog('Raw ticket response:', response);
+  
+  // Extraer datos del ticket usando programación funcional
+  const ticketData = extractTicketData(response);
+  
+  if (!ticketData) {
+    console.error(`No valid ticket data found for ticket ${ticketId}`);
     return null;
   }
+  
+  // Transformar inmutablemente con safeToJS
+  const transformedTicket = transformTicket(fromJS(ticketData));
+  
+  // Convertir a objeto JavaScript para interfaz externa
+  return transformedTicket.toJS() as ZohoTicket;
+};
+
+/**
+ * Función pura para extraer datos del ticket de diferentes estructuras de respuesta
+ * Maneja defensivamente diferentes casos (principio #2)
+ * @param response - Respuesta del API
+ * @returns Datos del ticket o null si no se encuentra
+ */
+const extractTicketData = (response: any): any => {
+  // Verificar estructura básica con la utilidad isImmutableMap
+  if (!isImmutableMap(response)) {
+    console.warn('Response is not an Immutable Map');
+    return null;
+  }
+  
+  // Caso 1: Error explícito - usando safeGet para acceso seguro
+  // Usamos una comparación que TypeScript puede validar correctamente
+  const success = safeGet(response, 'success', null);
+  if (success === false) {
+    safeErrorLog('API returned error:', safeGet(response, 'error', 'Unknown error'));
+    return null;
+  }
+  
+  // Evaluación de casos en orden de prioridad usando pipeline funcional
+  return (
+    // Caso 2: Ticket en campo ticket
+    safeGet(response, 'ticket', null) || 
+    // Caso 3: Ticket en campo data (si data es un Map)
+    (isImmutableMap(safeGet(response, 'data', null)) ? safeGet(response, 'data', null) : null) ||
+    // Caso 4: La respuesta misma es el ticket (ya verificamos que es Map)
+    response ||
+    // Ningún caso válido
+    (safeErrorLog('Unexpected response format:', response), null)
+  );
 };
 
 /**
@@ -220,25 +332,49 @@ const getTicketComments = async (ticketId: string): Promise<ZohoComment[]> => {
   try {
     console.log(`Fetching comments for ticket: ${ticketId}`);
     
-    // Make the API request through the backend proxy
+    // Obtener respuesta del API
     const response = await apiClient.get(`/api/zoho/tickets/${ticketId}/comments`);
     
-    // Verify response structure
-    if (!response.get('success')) {
-      throw new Error('Failed to fetch comments: Invalid response format');
-    }
-    
-    // Transform comments to immutable structure
-    const comments = response.get('comments', List())
-      .map((comment: any) => transformComment(fromJS(comment)))
-      .toList();
-    
-    // Return converted to JS
-    return comments.toJS() as ZohoComment[];
+    // Procesar la respuesta de forma funcional
+    return processCommentsResponse(response, ticketId);
   } catch (error) {
     console.error(`Error fetching comments for ticket ${ticketId}:`, error);
-    throw error;
+    return []; // Devolver array vacío en caso de error (programación defensiva)
   }
+};
+
+/**
+ * Función pura para procesar la respuesta de comentarios
+ * @param response - Respuesta del API
+ * @param ticketId - ID del ticket (para logs)
+ * @returns Array de comentarios procesados
+ */
+const processCommentsResponse = (response: any, ticketId: string): ZohoComment[] => {
+  // Log para depuración usando utilidad segura
+  safeLog('Raw comments response:', response);
+  
+  // Verificación esencial usando isImmutableMap
+  if (!isImmutableMap(response)) {
+    console.warn('Comments response is not an Immutable Map');
+    return [];
+  }
+  
+  // Verificar éxito de la operación con acceso seguro
+  const success = safeGet(response, 'success', null);
+  if (success === false) {
+    console.error('Failed to fetch comments: Invalid response format');
+    return [];
+  }
+  
+  // Extraer y transformar comentarios con acceso seguro
+  const comments = safeGet(response, 'comments', List())
+    .map((comment: any) => transformComment(fromJS(comment)))
+    .toList();
+  
+  console.log(`Successfully processed ${comments.size} comments for ticket ${ticketId}`);
+  
+  // Conversión segura a formato JS
+  return comments.toJS() as ZohoComment[];
 };
 
 /**
@@ -252,23 +388,44 @@ const addComment = async (ticketId: string, commentData: ZohoCommentInput): Prom
   try {
     console.log(`Adding comment to ticket: ${ticketId}`);
     
-    // Make the API request through the backend proxy
+    // Obtener respuesta del API
     const response = await apiClient.post(`/api/zoho/tickets/${ticketId}/comments`, commentData);
     
-    // Verify response structure
-    if (!response.get('success')) {
-      throw new Error('Failed to add comment: Invalid response format');
-    }
-    
-    // Transform the comment data
-    const immutableComment = transformComment(fromJS(response.toJS()));
-    
-    // Return the comment data
-    return toJS(immutableComment) as ZohoComment;
+    // Procesar la respuesta de forma funcional
+    return processAddCommentResponse(response);
   } catch (error) {
     console.error(`Error adding comment to ticket ${ticketId}:`, error);
-    throw error;
+    return {} as ZohoComment; // Valor por defecto en caso de error (programación defensiva)
   }
+};
+
+/**
+ * Función pura para procesar la respuesta de añadir comentario
+ * @param response - Respuesta del API
+ * @returns Comentario creado procesado
+ */
+const processAddCommentResponse = (response: any): ZohoComment => {
+  // Log seguro de la respuesta
+  safeLog('Add comment response:', response);
+  
+  // Verificación básica de la respuesta
+  if (!isImmutableMap(response)) {
+    console.warn('Add comment response is not an Immutable Map');
+    return {} as ZohoComment;
+  }
+  
+  // Verificar éxito de la operación
+  const success = safeGet(response, 'success', null);
+  if (success === false) {
+    console.error('Failed to add comment:', safeGet(response, 'error', 'Invalid response format'));
+    return {} as ZohoComment;
+  }
+  
+  // Transformar el comentario
+  const immutableComment = transformComment(fromJS(safeToJS(response)));
+  
+  // Devolver el comentario creado
+  return immutableComment.toJS() as ZohoComment;
 };
 
 /**
@@ -279,42 +436,57 @@ const createTicket = async (ticketData: ZohoTicketInput): Promise<ZohoTicket> =>
   try {
     console.log('Enviando datos del ticket al backend:', JSON.stringify(ticketData));
     
-    // Make the API request through the backend proxy
+    // Obtener respuesta del API
     const response = await apiClient.post('/api/zoho/tickets', ticketData);
     
-    console.log('Respuesta completa del servidor:', response?.toString().substring(0, 500));
+    // Log seguro de la respuesta
+    safeLog('Respuesta completa del servidor:', response);
     
-    // Verificar si tenemos una respuesta con la estructura esperada
-    if (!response) {
-      throw new Error('No se recibió respuesta del servidor');
-    }
-    
-    // Si la respuesta tiene un campo ticket, extraerlo (formato de n8n)
-    if (response.has('ticket')) {
-      console.log('Encontrada estructura ticket en respuesta directa');
-      const ticketData = response.get('ticket', Map());
-      return toJS(ticketData) as ZohoTicket;
-    }
-    
-    // Si la respuesta tiene datos dentro de data (formato API)
-    if (response.has('data')) {
-      console.log('Encontrada estructura data en respuesta');
-      // Transform the ticket data
-      const ticketData = response.get('data', Map());
-      const immutableTicket = transformTicket(ticketData.toJS());
-      
-      // Return the ticket data
-      return toJS(immutableTicket) as ZohoTicket;
-    }
-    
-    // Si no encontramos ninguna estructura reconocible, devolver lo que tengamos
-    console.warn('Estructura de respuesta no reconocida, intentando convertir toda la respuesta');
-    return toJS(response) as ZohoTicket;
+    // Procesar la respuesta de forma funcional
+    return processCreatedTicketResponse(response);
   } catch (error) {
     console.error('Error creating ticket:', error);
-    console.error('Stack trace:', error.stack);
-    throw error;
+    // Devolver un objeto vacío en caso de error (programación defensiva)
+    return {} as ZohoTicket;
   }
+};
+
+/**
+ * Función pura para procesar la respuesta de creación de ticket
+ * @param response - Respuesta del API
+ * @returns Ticket creado procesado
+ */
+const processCreatedTicketResponse = (response: any): ZohoTicket => {
+  // Verificación básica de la respuesta
+  if (!isImmutableMap(response)) {
+    console.warn('Ticket creation response is not an Immutable Map');
+    return {} as ZohoTicket;
+  }
+  
+  // Caso 1: Verificar si hay una respuesta con éxito explícito
+  const success = safeGet(response, 'success', null);
+  if (success === false) {
+    console.error('Error creating ticket:', safeGet(response, 'error', 'Unknown error'));
+    return {} as ZohoTicket;
+  }
+  
+  // Caso 2: Ticket en campo ticket
+  if (response.has('ticket')) {
+    const ticketData = safeGet(response, 'ticket', Map());
+    const transformedTicket = transformTicket(fromJS(ticketData));
+    return transformedTicket.toJS() as ZohoTicket;
+  }
+  
+  // Caso 3: Ticket en campo data
+  if (response.has('data')) {
+    const ticketData = safeGet(response, 'data', Map());
+    const transformedTicket = transformTicket(fromJS(ticketData));
+    return transformedTicket.toJS() as ZohoTicket;
+  }
+  
+  // Caso 4: La respuesta misma es el ticket
+  console.warn('Estructura de respuesta no reconocida, intentando convertir toda la respuesta');
+  return safeToJS(response) as ZohoTicket;
 };
 
 /**
@@ -323,17 +495,52 @@ const createTicket = async (ticketData: ZohoTicketInput): Promise<ZohoTicket> =>
  */
 const getDashboardStats = async (): Promise<ZohoDashboardStats> => {
   try {
-    // Make the API request through the backend projection endpoint
+    // Obtener respuesta del API
     const response = await apiClient.get('/projections/dashboard/overview');
     
-    // Transform the dashboard stats
-    const immutableStats = transformDashboardStats(response.toJS());
+    // Log seguro de la respuesta
+    safeLog('Dashboard stats response:', response);
     
-    // Return the dashboard stats
-    return toJS(immutableStats) as ZohoDashboardStats;
+    // Verificación básica de la respuesta
+    if (!isImmutableMap(response)) {
+      console.warn('Dashboard stats response is not an Immutable Map');
+      return {} as ZohoDashboardStats;
+    }
+    
+    // Transformar los datos del dashboard
+    const immutableStats = transformDashboardStats(safeToJS(response));
+    
+    // Devolver los datos transformados
+    return immutableStats.toJS() as ZohoDashboardStats;
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
-    throw error;
+    return {} as ZohoDashboardStats;
+  }
+};
+
+/**
+ * Get available statuses for tickets
+ * Uses backend proxy to avoid CORS issues
+ */
+const getStatuses = async (): Promise<any> => {
+  try {
+    // Obtener respuesta del API
+    const response = await apiClient.get('/api/zoho/statuses');
+    
+    // Log seguro de la respuesta
+    safeLog('Statuses response:', response);
+    
+    // Verificación y conversión segura
+    if (!isImmutableMap(response)) {
+      console.warn('Statuses response is not an Immutable Map');
+      return [];
+    }
+    
+    // Devolver los datos transformados
+    return safeToJS(response);
+  } catch (error) {
+    console.error('Error fetching statuses:', error);
+    return []; // Valor por defecto en caso de error
   }
 };
 
@@ -422,98 +629,74 @@ const getContacts = async (): Promise<ZohoContact[]> => {
   try {
     console.log('Fetching Zoho contacts...');
     
-    // Make the API request through the backend proxy
+    // Obtener respuesta del API
     const response = await apiClient.get('/api/zoho/contacts');
     
-    console.log('Raw contacts response:', response?.toString().substring(0, 300));
+    // Log seguro de la respuesta
+    safeLog('Raw contacts response:', response);
     
-    // Check if we have valid data in the response
-    if (!response) {
-      console.warn('No response received from contacts API');
-      return [];
-    }
-    
-    // Verificamos si tenemos la estructura con validContacts (estructura de n8n)
-    if (response.has('validContacts')) {
-      const contactsData = response.get('validContacts', List());
-      
-      if (!List.isList(contactsData) || contactsData.isEmpty()) {
-        console.warn('No valid contacts found in validContacts');
-        return [];
-      }
-      
-      console.log(`Processing ${contactsData.size} contacts from validContacts...`);
-      
-      // Map each contact to proper structure
-      const contacts = contactsData.map((item: any) => {
-        if (!Map.isMap(item)) {
-          console.warn('Contact item is not a Map:', item);
-          return null;
-        }
-        
-        const id = item.get('id', '') as string;
-        const name = item.get('name', '') as string;
-        const email = item.get('email', '') as string;
-        const phone = item.get('phone', '') as string;
-        
-        return {
-          id,
-          name,
-          email,
-          phone
-        };
-      })
-      .filter((contact: any) => contact !== null && contact.id)
-      .toArray() as ZohoContact[];
-      
-      console.log(`Returned ${contacts.length} valid contacts from validContacts`);
-      return contacts;
-    }
-    // Verificamos estructura alternativa con data
-    else if (response.has('data')) {
-      const contactsData = response.get('data', List());
-      
-      if (!List.isList(contactsData) || contactsData.isEmpty()) {
-        console.warn('No valid contacts data found');
-        return [];
-      }
-      
-      console.log(`Processing ${contactsData.size} contacts from data...`);
-      
-      // Map each contact to proper structure
-      const contacts = contactsData.map((item: any) => {
-        if (!Map.isMap(item)) {
-          console.warn('Contact item is not a Map:', item);
-          return null;
-        }
-        
-        const id = item.get('id', '') as string;
-        const name = item.get('name', '') as string;
-        const email = item.get('email', '') as string;
-        const phone = item.get('phone', '') as string;
-        
-        return {
-          id,
-          name,
-          email,
-          phone
-        };
-      })
-      .filter((contact: any) => contact !== null && contact.id)
-      .toArray() as ZohoContact[];
-      
-      console.log(`Returned ${contacts.length} valid contacts from data`);
-      return contacts;
-    } 
-    else {
-      console.warn('Unexpected contacts response structure - no validContacts or data found:', 
-        response?.toString().substring(0, 200));
-      return [];
-    }
+    // Procesamiento funcional de la respuesta
+    return processContactsResponse(response);
   } catch (error) {
     console.error('Error fetching contacts:', error);
-    throw error;
+    return []; // Valor por defecto en caso de error
   }
+};
+
+/**
+ * Función pura para procesar la respuesta de contactos
+ * @param response - Respuesta del API
+ * @returns Array de contactos procesados
+ */
+const processContactsResponse = (response: any): ZohoContact[] => {
+  // Verificación básica de la respuesta
+  if (!isImmutableMap(response)) {
+    console.warn('Contacts response is not an Immutable Map');
+    return [];
+  }
+  
+  // Extraer datos según la estructura de la respuesta
+  let contactsData;
+  
+  // Caso 1: Contactos en campo 'contacts'
+  if (response.has('contacts')) {
+    contactsData = safeGet(response, 'contacts', List());
+  } 
+  // Caso 2: Contactos en campo 'data'
+  else if (response.has('data')) {
+    contactsData = safeGet(response, 'data', List());
+  }
+  // Ningún caso válido
+  else {
+    safeErrorLog('Unexpected contacts response structure:', response);
+    return [];
+  }
+  
+  // Transformar contactos de forma inmutable
+  const contacts = contactsData
+    .map((contact: any) => {
+      const id = safeGet(contact, 'id', '');
+      const name = safeGet(contact, 'name', '');
+      const email = safeGet(contact, 'email', '');
+      const phone = safeGet(contact, 'phone', '');
+      
+      // Filtrar contactos inválidos
+      if (!id) {
+        return null;
+      }
+      
+      return {
+        id,
+        name,
+        email,
+        phone
+      };
+    })
+    .filter((contact: any) => contact !== null)
+    .toArray() as ZohoContact[];
+  
+  console.log(`Processed ${contacts.length} valid contacts`);
+  return contacts;
 };
 
 /**
@@ -523,105 +706,80 @@ const getContacts = async (): Promise<ZohoContact[]> => {
 const getAccounts = async (): Promise<ZohoAccount[]> => {
   try {
     console.log('Fetching accounts from Zoho...');
-    const apiClient = createApiClient();
+    
+    // Obtener respuesta del API
     const response = await apiClient.get('/api/zoho/accounts');
     
-    if (!response || typeof response !== 'object') {
-      console.warn('Invalid accounts response:', response);
-      return [];
-    }
+    // Log seguro de la respuesta
+    safeLog('Raw accounts response:', response);
     
-    const responseMap = fromJS(response);
-    
-    if (!Map.isMap(responseMap)) {
-      console.warn('Response is not an Immutable Map:', response);
-      return [];
-    }
-    
-    // Verificamos estructura con validAccounts
-    if (responseMap.has('validAccounts')) {
-      const accountsData = responseMap.get('validAccounts', List());
-      
-      if (!List.isList(accountsData) || accountsData.isEmpty()) {
-        console.warn('No valid accounts found');
-        return [];
-      }
-      
-      console.log(`Processing ${accountsData.size} accounts from validAccounts...`);
-      
-      // Map each account to proper structure
-      const accounts = accountsData.map((item: any) => {
-        if (!Map.isMap(item)) {
-          console.warn('Account item is not a Map:', item);
-          return null;
-        }
-        
-        const id = item.get('id', '') as string;
-        const name = item.get('name', '') as string;
-        const domain = item.get('domain', '') as string;
-        const isActive = item.get('isActive', true) as boolean;
-        
-        return {
-          id,
-          name,
-          domain,
-          isActive
-        };
-      })
-      .filter((account: any) => account !== null && account.id)
-      .toArray() as ZohoAccount[];
-      
-      console.log(`Returned ${accounts.length} valid accounts from validAccounts`);
-      return accounts;
-    }
-    // Verificamos estructura alternativa con data
-    else if (responseMap.has('data')) {
-      const accountsData = responseMap.get('data', List());
-      
-      if (!List.isList(accountsData) || accountsData.isEmpty()) {
-        console.warn('No valid accounts data found');
-        return [];
-      }
-      
-      console.log(`Processing ${accountsData.size} accounts from data...`);
-      
-      // Map each account to proper structure
-      const accounts = accountsData.map((item: any) => {
-        if (!Map.isMap(item)) {
-          console.warn('Account item is not a Map:', item);
-          return null;
-        }
-        
-        const id = item.get('id', '') as string;
-        const name = item.get('name', '') as string;
-        const domain = item.get('domain', '') as string;
-        const isActive = item.get('isActive', true) as boolean;
-        
-        return {
-          id,
-          name,
-          domain,
-          isActive
-        };
-      })
-      .filter((account: any) => account !== null && account.id)
-      .toArray() as ZohoAccount[];
-      
-      console.log(`Returned ${accounts.length} valid accounts from data`);
-      return accounts;
-    } 
-    else {
-      console.warn('Unexpected accounts response structure - no validAccounts or data found:', 
-        responseMap?.toString().substring(0, 200));
-      return [];
-    }
+    // Procesamiento funcional de la respuesta
+    return processAccountsResponse(response);
   } catch (error) {
     console.error('Error fetching accounts:', error);
-    throw error;
+    return []; // Valor por defecto en caso de error
   }
 };
 
-// Export the service functions
+/**
+ * Función pura para procesar la respuesta de cuentas
+ * @param response - Respuesta del API
+ * @returns Array de cuentas procesadas
+ */
+const processAccountsResponse = (response: any): ZohoAccount[] => {
+  // Verificación básica de la respuesta
+  if (!isImmutableMap(response)) {
+    console.warn('Accounts response is not an Immutable Map');
+    return [];
+  }
+  
+  // Extraer datos según la estructura de la respuesta
+  let accountsData;
+  
+  // Caso 1: Cuentas en campo 'accounts'
+  if (response.has('accounts')) {
+    accountsData = safeGet(response, 'accounts', List());
+  } 
+  // Caso 2: Cuentas en campo 'data'
+  else if (response.has('data')) {
+    accountsData = safeGet(response, 'data', List());
+  }
+  // Ningún caso válido
+  else {
+    safeErrorLog('Unexpected accounts response structure:', response);
+    return [];
+  }
+  
+  // Transformar cuentas de forma inmutable
+  const accounts = accountsData
+    .map((account: any) => {
+      const id = safeGet(account, 'id', '');
+      const name = safeGet(account, 'name', '');
+      const domain = safeGet(account, 'domain', '');
+      const isActive = safeGet(account, 'isActive', true);
+      
+      // Filtrar cuentas inválidas
+      if (!id) {
+        return null;
+      }
+      
+      return {
+        id,
+        name,
+        domain,
+        isActive
+      };
+    })
+    .filter((account: any) => account !== null)
+    .toArray() as ZohoAccount[];
+  
+  console.log(`Processed ${accounts.length} valid accounts`);
+  return accounts;
+};
+
+/**
+ * Export the service functions
+ */
 export const zohoService = {
   authenticateUser,
   getTickets,
@@ -632,5 +790,6 @@ export const zohoService = {
   getDashboardStats,
   getCategories,
   getContacts,
-  getAccounts
+  getAccounts,
+  getStatuses
 };
