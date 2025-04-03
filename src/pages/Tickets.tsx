@@ -179,6 +179,28 @@ const Tickets: React.FC = () => {
       <SortDesc className="inline h-4 w-4 ml-1" />;
   };
 
+  // Función segura para formatear fechas
+  const formatDateSafe = (dateValue: any): string => {
+    if (!dateValue) return 'No disponible';
+    
+    try {
+      // Intentar convertir a Date válido
+      const date = new Date(dateValue);
+      
+      // Verificar si la fecha es válida
+      if (isNaN(date.getTime())) {
+        console.warn('Fecha inválida en lista de tickets:', dateValue);
+        return 'Fecha no disponible';
+      }
+      
+      // Formatear usando date-fns
+      return format(date, 'MMM d, yyyy');
+    } catch (error) {
+      console.error('Error al formatear fecha en lista de tickets:', error);
+      return 'Fecha no disponible';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
@@ -335,7 +357,7 @@ const Tickets: React.FC = () => {
                       </TableCell>
                       <TableCell>{ticket.get('category')}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {format(new Date(ticket.get('modifiedTime')), 'MMM d, yyyy')}
+                        {formatDateSafe(ticket.get('modifiedTime'))}
                       </TableCell>
                     </TableRow>
                   ))}

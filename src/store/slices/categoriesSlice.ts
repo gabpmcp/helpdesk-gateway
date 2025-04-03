@@ -1,10 +1,12 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { List as ImmutableList, Map as ImmutableMap } from 'immutable';
+import type { List as ImmutableListType } from 'immutable';
 import { ZohoCategory, ImmutableCategory } from '../../core/models/zoho.types';
+import { RootState } from '../rootReducer';
 
 // Define the state interface
 interface CategoriesState {
-  items: ImmutableList<ImmutableCategory>;
+  items: ImmutableListType<ImmutableCategory>;
   loading: boolean;
   error: string | null;
 }
@@ -18,7 +20,7 @@ const initialState: CategoriesState = {
 
 // Async thunk that accepts a function parameter for fetching categories
 export const fetchCategories = createAsyncThunk<
-  ImmutableList<ImmutableCategory>,
+  ZohoCategory[], 
   () => Promise<ZohoCategory[]>,
   { rejectValue: string }
 >(
@@ -26,7 +28,7 @@ export const fetchCategories = createAsyncThunk<
   async (fetchCategories, { rejectWithValue }) => {
     try {
       const categories = await fetchCategories();
-      return ImmutableList(categories.map(category => ImmutableMap(category) as ImmutableCategory));
+      return categories;
     } catch (error) {
       return rejectWithValue(error instanceof Error ? error.message : 'Failed to fetch categories');
     }
@@ -46,10 +48,15 @@ const categoriesSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchCategories.fulfilled, (state, action: PayloadAction<ImmutableList<ImmutableCategory>>) => {
-        state.items = action.payload;
-        state.loading = false;
-        state.error = null;
+      .addCase(fetchCategories.fulfilled, (state, action) => {
+        const newItems = ImmutableList<ImmutableCategory>(
+          action.payload.map(item => ImmutableMap<string, any>(item))
+        );
+        Object.assign(state, {
+          items: newItems,
+          loading: false,
+          error: null
+        });
       })
       .addCase(fetchCategories.rejected, (state, action) => {
         state.loading = false;
@@ -61,3 +68,8 @@ const categoriesSlice = createSlice({
 // Export actions and reducer
 export const { resetCategories } = categoriesSlice.actions;
 export default categoriesSlice.reducer;
+
+// Selectores
+export const selectCategories = (state: RootState) => state.categories.items;
+export const selectCategoriesLoading = (state: RootState) => state.categories.loading;
+export const selectCategoriesError = (state: RootState) => state.categories.error;

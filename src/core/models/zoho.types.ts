@@ -1,4 +1,5 @@
 import { Map, List, Record as ImmutableRecord } from 'immutable';
+import type { Map as ImmutableMap, List as ImmutableList } from 'immutable';
 
 // Type definitions for primitive values
 export type ZohoId = string;
@@ -91,16 +92,16 @@ export interface ZohoConfigRecord {
 }
 
 // Type aliases for Map-based immutable structures
-export type ImmutableTicket = Map<string, any>;
-export type ImmutableComment = Map<string, any>;
-export type ImmutableCategory = Map<string, any>;
-export type ImmutableContact = Map<string, any>;
-export type ImmutableAccount = Map<string, any>;
-export type ImmutableDashboardStats = Map<string, any>;
-export type ImmutableFilters = Map<string, any>;
-export type ImmutableAuthResponse = Map<string, any>;
-export type ImmutableConfig = Map<string, any>;
-export type ImmutableUser = Map<string, any>;
+export type ImmutableTicket = ImmutableMap<string, any>;
+export type ImmutableComment = ImmutableMap<string, any>;
+export type ImmutableCategory = ImmutableMap<string, any>;
+export type ImmutableContact = ImmutableMap<string, any>;
+export type ImmutableAccount = ImmutableMap<string, any>;
+export type ImmutableDashboardStats = ImmutableMap<string, any>;
+export type ImmutableFilters = ImmutableMap<string, any>;
+export type ImmutableAuthResponse = ImmutableMap<string, any>;
+export type ImmutableConfig = ImmutableMap<string, any>;
+export type ImmutableUser = ImmutableMap<string, any>;
 
 // Record factories for creating immutable records
 export const TicketRecord = ImmutableRecord<ZohoTicketRecord>({
@@ -286,6 +287,7 @@ export interface ZohoFilters {
   status?: string;
   priority?: string;
   category?: string;
+  departmentId?: string;
   from?: string;
   to?: string;
   search?: string;
@@ -305,36 +307,47 @@ export interface ZohoAuthResponse {
   error?: string;
 }
 
-export type ZohoTicketInput = Omit<ZohoTicket, 'id' | 'createdTime' | 'modifiedTime' | 'comments'> & {
+export interface ZohoTicketInput {
+  subject: string;
+  description: string;
+  status?: string;
+  priority?: string;
+  category?: string;
   dueDate?: string;
   departmentId?: string;
   contactId?: string;
   accountId?: string;
-};
+  ticketNumber?: string;
+}
 
-export type ZohoCommentInput = Omit<ZohoComment, 'id' | 'createdTime' | 'createdBy'>;
+export type ZohoCommentInput = {
+  comment: string;
+  isPublic: boolean;
+  createdTime?: string;
+  author?: string;
+};
 
 // Conversion utilities
 export const toImmutableTicket = (ticket: ZohoTicket): ImmutableTicket => 
-  Map({
+  ImmutableMap({
     ...ticket,
-    comments: List(ticket.comments.map(comment => toImmutableComment(comment)))
+    comments: ImmutableList(ticket.comments.map(comment => toImmutableComment(comment)))
   });
 
 export const toImmutableComment = (comment: ZohoComment): ImmutableComment => 
-  Map(comment);
+  ImmutableMap(comment);
 
 export const toImmutableCategory = (category: ZohoCategory): ImmutableCategory => 
-  Map(category);
+  ImmutableMap(category);
 
 export const toImmutableContact = (contact: ZohoContact): ImmutableContact => 
-  Map(contact);
+  ImmutableMap(contact);
 
 export const toImmutableAccount = (account: ZohoAccount): ImmutableAccount => 
-  Map(account);
+  ImmutableMap(account);
 
 export const toImmutableFilters = (filters: ZohoFilters): ImmutableFilters => 
-  Map(filters);
+  ImmutableMap(filters);
 
 export const fromImmutableTicket = (ticket: ImmutableTicket): ZohoTicket => ({
   id: ticket.get('id'),
@@ -347,7 +360,7 @@ export const fromImmutableTicket = (ticket: ImmutableTicket): ZohoTicket => ({
   createdTime: ticket.get('createdTime'),
   modifiedTime: ticket.get('modifiedTime'),
   ticketNumber: ticket.get('ticketNumber'),
-  comments: ticket.get('comments', List()).toArray().map(fromImmutableComment)
+  comments: ticket.get('comments', ImmutableList()).toArray().map(fromImmutableComment)
 });
 
 export const fromImmutableComment = (comment: ImmutableComment): ZohoComment => ({

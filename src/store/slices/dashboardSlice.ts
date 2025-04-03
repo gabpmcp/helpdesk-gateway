@@ -49,9 +49,34 @@ const dashboardSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchDashboard.fulfilled, (state, action) => {
-        state.stats = action.payload;
+      .addCase(fetchDashboard.fulfilled, (state, action: PayloadAction<any>) => {
         state.loading = false;
+        // Ahora hay que asegurarse de que los datos están en el formato correcto
+        // ya sea en formato Immutable o JSON plano
+        
+        console.log("[Dashboard Slice] Data received:", action.payload);
+        
+        let dashboardData;
+        
+        // Si ya es un Map inmutable, usarlo directamente
+        if (ImmutableMap.isMap(action.payload)) {
+          dashboardData = action.payload;
+          console.log("[Dashboard Slice] Using immutable data");
+        } 
+        // Si es un objeto plano JSON, convertirlo a inmutable
+        else if (typeof action.payload === 'object' && action.payload !== null) {
+          dashboardData = fromJS(action.payload);
+          console.log("[Dashboard Slice] Converted plain object to immutable");
+        }
+        // Si no, crear un Map vacío
+        else {
+          console.warn("[Dashboard Slice] Invalid data format received");
+          dashboardData = ImmutableMap({});
+        }
+        
+        // Actualizando el estado con los datos adaptados para dashboard
+        state.stats = dashboardData;
+        state.error = null;
       })
       .addCase(fetchDashboard.rejected, (state, action) => {
         state.loading = false;
@@ -116,11 +141,39 @@ export const selectTicketsByPriorityChartData = createSelector(
   (distribution) => {
     if (!distribution) return [];
     
+    // Verificar si estamos manejando un Map inmutable o un objeto JavaScript normal
+    const isImmutable = ImmutableMap.isMap(distribution);
+    
+    console.log('[Dashboard Selector] Tipo de datos para prioridad:', 
+                isImmutable ? 'Immutable Map' : 'JavaScript Object', 
+                distribution);
+    
+    // Acceder a los datos según el tipo
     return [
-      { name: 'Low', value: distribution.get('Low', 0) },
-      { name: 'Medium', value: distribution.get('Medium', 0) },
-      { name: 'High', value: distribution.get('High', 0) },
-      { name: 'Urgent', value: distribution.get('Urgent', 0) }
+      { 
+        name: 'Low', 
+        value: isImmutable 
+          ? distribution.get('Low', 0) 
+          : (distribution.Low || 0) 
+      },
+      { 
+        name: 'Medium', 
+        value: isImmutable 
+          ? distribution.get('Medium', 0) 
+          : (distribution.Medium || 0) 
+      },
+      { 
+        name: 'High', 
+        value: isImmutable 
+          ? distribution.get('High', 0) 
+          : (distribution.High || 0) 
+      },
+      { 
+        name: 'Urgent', 
+        value: isImmutable 
+          ? distribution.get('Urgent', 0) 
+          : (distribution.Urgent || 0) 
+      }
     ];
   }
 );
@@ -130,11 +183,39 @@ export const selectTicketsByStatusChartData = createSelector(
   (distribution) => {
     if (!distribution) return [];
     
+    // Verificar si estamos manejando un Map inmutable o un objeto JavaScript normal
+    const isImmutable = ImmutableMap.isMap(distribution);
+    
+    console.log('[Dashboard Selector] Tipo de datos para estado:', 
+                isImmutable ? 'Immutable Map' : 'JavaScript Object', 
+                distribution);
+    
+    // Acceder a los datos según el tipo
     return [
-      { name: 'Open', value: distribution.get('Open', 0) },
-      { name: 'In Progress', value: distribution.get('In Progress', 0) },
-      { name: 'Closed', value: distribution.get('Closed', 0) },
-      { name: 'On Hold', value: distribution.get('On Hold', 0) }
+      { 
+        name: 'Open', 
+        value: isImmutable 
+          ? distribution.get('Open', 0) 
+          : (distribution.Open || 0) 
+      },
+      { 
+        name: 'In Progress', 
+        value: isImmutable 
+          ? distribution.get('In Progress', 0) 
+          : (distribution['In Progress'] || 0) 
+      },
+      { 
+        name: 'Closed', 
+        value: isImmutable 
+          ? distribution.get('Closed', 0) 
+          : (distribution.Closed || 0) 
+      },
+      { 
+        name: 'On Hold', 
+        value: isImmutable 
+          ? distribution.get('On Hold', 0) 
+          : (distribution['On Hold'] || 0) 
+      }
     ];
   }
 );

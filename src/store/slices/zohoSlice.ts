@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { fromJS, Map as ImmutableMap } from 'immutable';
 import { zohoService } from '../../services/zohoService';
-import { fetchReportsOverview as fetchReportsOverviewService } from '../../services/dashboardProjectionService';
+import { fetchDashboardOverview } from '../../services/dashboardProjectionService';
 
 // Define state interfaces with immutable structures
 export interface ZohoReportsState {
@@ -42,7 +42,7 @@ export const fetchReportsWebhook = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       // Call the projection service to fetch data from webhook
-      const data = await fetchReportsOverviewService();
+      const data = await fetchDashboardOverview();
       
       // Return the data for the fulfilled action
       return data.toJS();

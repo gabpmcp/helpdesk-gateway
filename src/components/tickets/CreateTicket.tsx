@@ -1,12 +1,48 @@
-import React, { useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import React, { useState, useEffect } from 'react';
+import { useAppDispatch, useAppSelector } from '../../hooks/redux';
 import { useNavigate } from 'react-router-dom';
 import { 
   createTicket,
   selectTicketLoading,
-  selectTicketError
-} from '../../store/slices/ticketSlice';
-import { AppDispatch } from '../../store/store';
+  selectTicketError,
+  resetCreateTicket
+} from '../../store/slices/createTicketSlice';
+import { 
+  selectCategories,
+  selectCategoriesLoading,
+  fetchCategories
+} from '../../store/slices/categoriesSlice';
+import { zohoService } from '../../services/zohoService';
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle,
+  CardFooter
+} from '../../components/ui/card';
+import { 
+  Form, 
+  FormControl, 
+  FormField, 
+  FormItem, 
+  FormLabel, 
+  FormMessage 
+} from '../../components/ui/form';
+import { Input } from '../../components/ui/input';
+import { Textarea } from '../../components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
+import { Button } from '../../components/ui/button';
+import { AlertCircle, Loader2, SendHorizonal } from 'lucide-react';
+import { Alert, AlertDescription } from '../../components/ui/alert';
+import { useToast } from '../../hooks/use-toast';
+import { ZohoTicketInput } from '../../core/models/zoho.types';
 
 /**
  * Componente para crear un nuevo ticket en el sistema
@@ -14,183 +50,228 @@ import { AppDispatch } from '../../store/store';
  */
 const CreateTicket: React.FC = () => {
   const navigate = useNavigate();
-  const dispatch = useDispatch<AppDispatch>();
-  const isLoading = useSelector(selectTicketLoading);
-  const error = useSelector(selectTicketError);
+  const dispatch = useAppDispatch();
+  const isLoading = useAppSelector(selectTicketLoading);
+  const error = useAppSelector(selectTicketError);
+  const categories = useAppSelector(selectCategories);
+  const { toast } = useToast();
   
   // Estado del formulario
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('Medium');
   const [category, setCategory] = useState('');
-  const [attachments, setAttachments] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Cargar categorías al montar el componente
+  useEffect(() => {
+    dispatch(fetchCategories(zohoService.getCategories));
+  }, [dispatch]);
+
+  // Función pura para validar el formulario
+  const validateForm = () => {
+    const errors: Record<string, string> = {};
+    
+    if (!subject.trim()) {
+      errors.subject = 'El asunto es requerido';
+    }
+    
+    if (!description.trim()) {
+      errors.description = 'La descripción es requerida';
+    }
+    
+    return {
+      valid: Object.keys(errors).length === 0,
+      errors
+    };
+  };
 
   // Manejar envío del formulario
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!subject.trim() || !description.trim()) {
+    // Validar campos
+    const validation = validateForm();
+    if (!validation.valid) {
+      // Mostrar errores de validación
+      Object.entries(validation.errors).forEach(([field, message]) => {
+        toast({
+          title: `Error en ${field}`,
+          description: message,
+          variant: 'destructive',
+        });
+      });
       return;
     }
     
+    setSubmitting(true);
+    
+    // Crear datos del ticket (enfoque funcional)
+    const ticketData: ZohoTicketInput = {
+      subject: subject.trim(),
+      description: description.trim(),
+      priority,
+      departmentId: category || undefined
+    };
+    
     try {
-      // Crear ticket data
-      const ticketData = {
-        subject,
-        description,
-        priority,
-        category,
-        timestamp: new Date().toISOString()
-      };
-
-      // Enviar petición de creación
-      const resultAction = await dispatch(createTicket(ticketData));
+      // Usar thunk con promesa para manejo funcional
+      const resultAction = await dispatch(createTicket({ 
+        createTicketFn: zohoService.createTicket, 
+        ticketData 
+      }));
       
       if (createTicket.fulfilled.match(resultAction)) {
-        // Si hay archivos adjuntos, añadirlos como primer comentario
-        const newTicketId = resultAction.payload?.id;
+        // Éxito - mostrar toast y redirigir
+        toast({
+          title: 'Ticket creado correctamente',
+          description: 'Serás redirigido a la página de tickets.',
+        });
         
-        // Navegar a la pantalla de detalles del ticket
-        navigate(`/tickets/${newTicketId}`);
+        // Esperar un momento antes de redirigir para que el usuario vea el mensaje
+        setTimeout(() => {
+          navigate('/tickets');
+        }, 1500);
+      } else if (createTicket.rejected.match(resultAction)) {
+        // Error - mostrar toast
+        toast({
+          title: 'Error al crear el ticket',
+          description: resultAction.payload || 'Ocurrió un error inesperado',
+          variant: 'destructive',
+        });
       }
-    } catch (error) {
-      console.error('Error creating ticket:', error);
+    } catch (err) {
+      // Error no manejado
+      console.error('Error al crear ticket:', err);
+      toast({
+        title: 'Error al crear el ticket',
+        description: 'Ocurrió un error inesperado',
+        variant: 'destructive',
+      });
+    } finally {
+      setSubmitting(false);
     }
-  };
-
-  // Manejar archivos adjuntos
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      // Convertir FileList a array
-      const fileArray = Array.from(e.target.files);
-      setAttachments(prev => [...prev, ...fileArray]);
-    }
-  };
-
-  // Eliminar un archivo adjunto
-  const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
-    <div className="create-ticket-container">
-      <h1>Crear Nuevo Ticket</h1>
-      
-      {error && (
-        <div className="error-message">
-          Error: {error}
-        </div>
-      )}
-      
-      <form onSubmit={handleSubmit} className="ticket-form">
-        <div className="form-group">
-          <label htmlFor="subject">Asunto *</label>
-          <input
-            id="subject"
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="Breve descripción del problema"
-            required
-            className="form-control"
-          />
-        </div>
+    <div className="max-w-2xl mx-auto">
+      <Card>
+        <CardHeader>
+          <CardTitle>Crear Nuevo Ticket</CardTitle>
+          <CardDescription>
+            Completa el formulario para crear un nuevo ticket de soporte
+          </CardDescription>
+        </CardHeader>
         
-        <div className="form-group">
-          <label htmlFor="description">Descripción *</label>
-          <textarea
-            id="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describa su problema o solicitud con detalle"
-            required
-            rows={5}
-            className="form-control"
-          />
-        </div>
+        {error && (
+          <CardContent>
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </CardContent>
+        )}
         
-        <div className="form-group">
-          <label htmlFor="priority">Prioridad</label>
-          <select
-            id="priority"
-            value={priority}
-            onChange={(e) => setPriority(e.target.value)}
-            className="form-control"
-          >
-            <option value="Low">Baja</option>
-            <option value="Medium">Media</option>
-            <option value="High">Alta</option>
-            <option value="Urgent">Urgente</option>
-          </select>
-        </div>
-        
-        <div className="form-group">
-          <label htmlFor="category">Categoría</label>
-          <select
-            id="category"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="form-control"
-          >
-            <option value="">Seleccionar categoría</option>
-            <option value="technical">Soporte Técnico</option>
-            <option value="billing">Facturación</option>
-            <option value="account">Cuenta</option>
-            <option value="other">Otro</option>
-          </select>
-        </div>
-        
-        <div className="form-group">
-          <label>Archivos Adjuntos</label>
-          <div className="attachments-section">
-            <div className="attachment-list">
-              {attachments.map((file, index) => (
-                <div key={index} className="attachment-item">
-                  <span className="attachment-name">{file.name}</span>
-                  <button 
-                    type="button"
-                    className="remove-attachment"
-                    onClick={() => removeAttachment(index)}
-                  >
-                    &times;
-                  </button>
-                </div>
-              ))}
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <FormLabel htmlFor="subject">Asunto</FormLabel>
+                <Input
+                  id="subject"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Resumen breve de tu solicitud"
+                  disabled={submitting}
+                  className="w-full"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <FormLabel htmlFor="category">Categoría</FormLabel>
+                <Select
+                  value={category}
+                  onValueChange={setCategory}
+                  disabled={submitting}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una categoría" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">General</SelectItem>
+                    {categories.map((cat: any) => (
+                      <SelectItem 
+                        key={cat.get('id', '')} 
+                        value={cat.get('id', '')}
+                      >
+                        {cat.get('name', '')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <FormLabel htmlFor="priority">Prioridad</FormLabel>
+                <Select
+                  value={priority}
+                  onValueChange={setPriority}
+                  disabled={submitting}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Low">Baja</SelectItem>
+                    <SelectItem value="Medium">Media</SelectItem>
+                    <SelectItem value="High">Alta</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <FormLabel htmlFor="description">Descripción</FormLabel>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe tu problema o solicitud en detalle"
+                  disabled={submitting}
+                  className="min-h-32"
+                />
+              </div>
             </div>
             
-            <div className="attachment-controls">
-              <input
-                type="file"
-                id="file-upload"
-                multiple
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
-              />
-              <label htmlFor="file-upload" className="file-upload-btn">
-                Adjuntar Archivos
-              </label>
+            <div className="flex justify-end space-x-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate('/tickets')}
+                disabled={submitting}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={submitting}
+                className="flex items-center"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creando...
+                  </>
+                ) : (
+                  <>
+                    <SendHorizonal className="mr-2 h-4 w-4" />
+                    Crear Ticket
+                  </>
+                )}
+              </Button>
             </div>
-          </div>
-        </div>
-        
-        <div className="form-actions">
-          <button 
-            type="button" 
-            className="cancel-btn"
-            onClick={() => navigate('/tickets/my-tickets')}
-          >
-            Cancelar
-          </button>
-          
-          <button 
-            type="submit" 
-            className="submit-btn"
-            disabled={isLoading || !subject.trim() || !description.trim()}
-          >
-            {isLoading ? 'Creando...' : 'Crear Ticket'}
-          </button>
-        </div>
-      </form>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 };

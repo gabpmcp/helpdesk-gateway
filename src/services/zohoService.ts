@@ -47,48 +47,92 @@ interface TicketsResponse {
   tickets: ZohoTicket[];
   total: number;
   page: number;
+  timestamp: string;
 }
 
 /**
  * Get tickets with optional filters
  * Uses backend proxy to avoid CORS issues
+ * @param filters - Filter parameters for tickets
+ * @returns Promise with tickets response
  */
 const getTickets = async (filters: ZohoFilters = {}): Promise<TicketsResponse> => {
   try {
-    // Create URL parameters from filters
-    const params = new URLSearchParams();
-    Object.entries(filters)
+    // Build query parameters from filters in a functional way
+    const queryParams = Object.entries(filters)
       .filter(([_, value]) => value !== undefined && value !== null && value !== '')
-      .forEach(([key, value]) => params.append(key, String(value)));
+      .reduce((acc, [key, value]) => {
+        acc[key] = String(value);
+        return acc;
+      }, {} as Record<string, string>);
     
-    // Make the API request through the backend proxy
-    const response = await apiClient.get(`/api/zoho/tickets?${params.toString()}`);
+    // Create URL with query string using URLSearchParams
+    const queryString = new URLSearchParams(queryParams).toString();
+    const url = `/api/zoho/tickets${queryString ? `?${queryString}` : ''}`;
     
-    // Convert response to immutable structure
-    const immutableTickets = List<ImmutableTicket>(
-      (response.get('data', List()) as List<any>)
-        .map((item: any) => transformTicket(item))
-        .toArray()
-    );
+    console.log(`Fetching tickets with filters: ${JSON.stringify(filters)}`);
+    const response = await apiClient.get(url);
     
-    // Apply filtering and sorting
-    const processedTickets = processTickets(immutableTickets, Map(filters) as ImmutableFilters);
+    // Adaptable parsing based on response structure
+    let ticketsData;
+    let metaData = Map({
+      total: 0,
+      from: 0,
+      limit: 50
+    });
     
-    // Return the processed data
+    // Manejar diferentes estructuras de respuesta posibles
+    if (response.has('success') && !response.get('success')) {
+      // Si hay un campo success y es false, hay un error
+      throw new Error(response.get('error', 'Unknown error occurred'));
+    } else if (response.has('tickets')) {
+      // Si la respuesta contiene un array de tickets directamente
+      ticketsData = response.get('tickets');
+      // Si hay metadatos disponibles, usarlos
+      if (response.has('meta')) {
+        metaData = response.get('meta');
+      }
+    } else if (response.has('data') && List.isList(response.get('data'))) {
+      // Algunos endpoints devuelven los tickets dentro de un campo data
+      ticketsData = response.get('data');
+    } else if (List.isList(response)) {
+      // Si la respuesta es directamente una lista
+      ticketsData = response;
+    } else {
+      // En último caso, intentar con el campo 'items' o usar la respuesta completa
+      ticketsData = response.get('items', response);
+    }
+    
+    // Asegurar que ticketsData sea una List de Immutable
+    const ticketsList = List.isList(ticketsData) ? ticketsData : List(ticketsData || []);
+    
+    // Transform tickets to immutable structure
+    const tickets = ticketsList
+      .map((ticket: any) => transformTicket(fromJS(ticket)))
+      .toList();
+    
+    console.log(`Successfully fetched ${tickets.size} tickets`);
+    
+    // Return tickets and metadata
     return {
-      tickets: processedTickets.toArray().map(ticket => toJS(ticket) as ZohoTicket),
-      total: response.get('total', 0) as number,
-      page: response.get('page', 1) as number
+      tickets: tickets.toJS() as ZohoTicket[],
+      total: metaData.get('total', tickets.size),
+      page: Math.max(1, metaData.get('from', 0) / Math.max(1, metaData.get('limit', 50))),
+      timestamp: response.get('timestamp', new Date().toISOString())
     };
   } catch (error) {
     console.error('Error fetching tickets:', error);
-    throw error;
+    throw error instanceof Error ? 
+      error : 
+      new Error('Failed to fetch tickets');
   }
 };
 
 /**
  * Get a ticket by ID
  * Uses backend proxy to avoid CORS issues
+ * @param id - Ticket ID
+ * @returns Promise with ticket data
  */
 const getTicketById = async (id: string): Promise<ZohoTicket> => {
   try {
@@ -96,7 +140,7 @@ const getTicketById = async (id: string): Promise<ZohoTicket> => {
     const response = await apiClient.get(`/api/zoho/tickets/${id}`);
     
     // Transform the ticket data
-    const immutableTicket = transformTicket(response.get('data', Map()).toJS());
+    const immutableTicket = transformTicket(fromJS(response.get('data', Map()).toJS()));
     
     // Return the ticket data
     return toJS(immutableTicket) as ZohoTicket;
@@ -107,16 +151,57 @@ const getTicketById = async (id: string): Promise<ZohoTicket> => {
 };
 
 /**
+ * Get comments for a ticket
+ * Uses backend proxy to avoid CORS issues
+ * @param ticketId - Ticket ID
+ * @returns Promise with comments data
+ */
+const getTicketComments = async (ticketId: string): Promise<ZohoComment[]> => {
+  try {
+    console.log(`Fetching comments for ticket: ${ticketId}`);
+    
+    // Make the API request through the backend proxy
+    const response = await apiClient.get(`/api/zoho/tickets/${ticketId}/comments`);
+    
+    // Verify response structure
+    if (!response.get('success')) {
+      throw new Error('Failed to fetch comments: Invalid response format');
+    }
+    
+    // Transform comments to immutable structure
+    const comments = response.get('comments', List())
+      .map((comment: any) => transformComment(fromJS(comment)))
+      .toList();
+    
+    // Return converted to JS
+    return comments.toJS() as ZohoComment[];
+  } catch (error) {
+    console.error(`Error fetching comments for ticket ${ticketId}:`, error);
+    throw error;
+  }
+};
+
+/**
  * Add a comment to a ticket
  * Uses backend proxy to avoid CORS issues
+ * @param ticketId - Ticket ID
+ * @param commentData - Comment data to add
+ * @returns Promise with created comment data
  */
 const addComment = async (ticketId: string, commentData: ZohoCommentInput): Promise<ZohoComment> => {
   try {
+    console.log(`Adding comment to ticket: ${ticketId}`);
+    
     // Make the API request through the backend proxy
     const response = await apiClient.post(`/api/zoho/tickets/${ticketId}/comments`, commentData);
     
+    // Verify response structure
+    if (!response.get('success')) {
+      throw new Error('Failed to add comment: Invalid response format');
+    }
+    
     // Transform the comment data
-    const immutableComment = transformComment(response.get('data', Map()).toJS());
+    const immutableComment = transformComment(fromJS(response.toJS()));
     
     // Return the comment data
     return toJS(immutableComment) as ZohoComment;
@@ -482,6 +567,7 @@ export const zohoService = {
   authenticateUser,
   getTickets,
   getTicketById,
+  getTicketComments,
   addComment,
   createTicket,
   getDashboardStats,

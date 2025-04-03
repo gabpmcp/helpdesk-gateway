@@ -62,8 +62,49 @@ const Dashboard: React.FC = () => {
 
   // Fetch dashboard stats on component mount using our new thunk
   useEffect(() => {
+    // Intentar cargar los datos normalmente
     dispatch(fetchDashboard());
-  }, [dispatch]);
+    
+    // SOLUCIÓN TEMPORAL: Datos de prueba para verificar el dashboard
+    // Si después de 3 segundos no hay datos, cargar datos estáticos
+    const timer = setTimeout(() => {
+      console.log("[Dashboard] Verificando si hay datos...");
+      if (!ticketCount) {
+        console.log("[Dashboard] No hay datos reales, cargando datos de prueba");
+        // Crear los datos de prueba en el formato esperado
+        const testData = {
+          ticketCount: 12,
+          openTicketCount: 5,
+          urgentTicketCount: 2,
+          responseTimeAvg: 3.4,
+          satisfactionScore: 87,
+          metrics: {
+            ticketsByPriority: {
+              Low: 2, Medium: 5, High: 3, Urgent: 2
+            },
+            ticketsByStatus: {
+              Open: 5, "In Progress": 3, Closed: 3, "On Hold": 1
+            }
+          },
+          timestamp: new Date().toISOString()
+        };
+        
+        // Actualizar el estado de Redux directamente con estos datos
+        dispatch({ 
+          type: 'dashboard/fetchStats/fulfilled', 
+          payload: testData 
+        });
+        
+        toast({
+          title: "Datos de prueba cargados",
+          description: "Se han cargado datos temporales para visualizar el dashboard mientras se resuelve la conexión con n8n.",
+          variant: "default"
+        });
+      }
+    }, 3000);
+    
+    return () => clearTimeout(timer);
+  }, [dispatch, ticketCount, toast]);
 
   // Show error toast if there's an error
   useEffect(() => {

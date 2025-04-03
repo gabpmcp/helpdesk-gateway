@@ -27,7 +27,6 @@ export const store = configureStore({
   devTools: process.env.NODE_ENV !== 'production',
 });
 
+// Inferir el tipo `RootState` desde el store
+export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
-
-// Hooks tipados para usar con React-Redux
-export const useAppDispatch = () => store.dispatch;

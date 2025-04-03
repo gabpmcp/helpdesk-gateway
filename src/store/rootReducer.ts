@@ -5,7 +5,9 @@
  * para su uso con configureStore
  */
 import { combineReducers } from '@reduxjs/toolkit';
-import ticketReducer from './slices/ticketSlice';
+import ticketsReducer from './slices/ticketsSlice';
+import createTicketReducer from './slices/createTicketSlice';
+import categoriesReducer from './slices/categoriesSlice';
 
 // Importamos reducers existentes si hay
 // Por ejemplo:
@@ -13,7 +15,9 @@ import ticketReducer from './slices/ticketSlice';
 // import authReducer from './slices/authSlice';
 
 const rootReducer = combineReducers({
-  tickets: ticketReducer,
+  tickets: ticketsReducer,
+  createTicket: createTicketReducer,
+  categories: categoriesReducer,
   // Agregar otros reducers que ya existan
   // dashboard: dashboardReducer,
   // auth: authReducer,

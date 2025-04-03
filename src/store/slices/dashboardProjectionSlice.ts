@@ -100,12 +100,61 @@ const dashboardProjectionSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchDashboardProjection.fulfilled, (state, action) => {
-        // Convertir el payload a un objeto JavaScript plano
-        const jsPayload = isMap(action.payload) || List.isList(action.payload)
-          ? immutableToJS(action.payload)
-          : action.payload || {};
+        // Convertir el payload a un objeto JavaScript plano de manera segura
+        let jsPayload = {};
         
-        // Asignar al state (Immer se encargará de la inmutabilidad)
+        try {
+          // Verificar si es una estructura inmutable y convertirla
+          if (action.payload && typeof action.payload === 'object') {
+            if (action.payload.toJS) {
+              // Es una estructura inmutable, usar toJS()
+              jsPayload = action.payload.toJS();
+            } else {
+              // Es un objeto JavaScript normal
+              jsPayload = action.payload;
+            }
+          }
+          
+          // Asegurar que haya datos mínimos para la UI
+          if (!jsPayload.metrics) {
+            jsPayload.metrics = {
+              total: 0,
+              open: 0,
+              urgent: 0,
+              responseTime: 0,
+              satisfaction: 0
+            };
+          }
+          
+          if (!jsPayload.ticketsByPriority) {
+            jsPayload.ticketsByPriority = {
+              low: 0,
+              medium: 0,
+              high: 0,
+              urgent: 0
+            };
+          }
+          
+          if (!jsPayload.ticketsByStatus) {
+            jsPayload.ticketsByStatus = {
+              open: 0,
+              inProgress: 0,
+              closed: 0,
+              onHold: 0
+            };
+          }
+        } catch (error) {
+          console.error('[Dashboard Slice] Error processing dashboard data:', error);
+          // Si hay un error, usar datos por defecto
+          jsPayload = {
+            metrics: { total: 0, open: 0, urgent: 0, responseTime: 0, satisfaction: 0 },
+            ticketsByPriority: { low: 0, medium: 0, high: 0, urgent: 0 },
+            ticketsByStatus: { open: 0, inProgress: 0, closed: 0, onHold: 0 },
+            timestamp: new Date().toISOString()
+          };
+        }
+        
+        // Asignar al state
         state.data = jsPayload;
         state.loading = false;
         state.lastUpdated = new Date().toISOString();
