@@ -23,7 +23,8 @@ import {
   ImmutableCategory,
   ImmutableDashboardStats,
   ImmutableFilters,
-  ZohoContact
+  ZohoContact,
+  ZohoAccount
 } from '../core/models/zoho.types';
 import { toImmutableTicket, toImmutableComment, toImmutableCategory, toImmutableFilters } from '../core/models/zoho.types';
 
@@ -371,6 +372,111 @@ const getContacts = async (): Promise<ZohoContact[]> => {
   }
 };
 
+/**
+ * Get Zoho Accounts
+ * Uses backend proxy to avoid CORS issues
+ */
+const getAccounts = async (): Promise<ZohoAccount[]> => {
+  try {
+    console.log('Fetching accounts from Zoho...');
+    const apiClient = createApiClient();
+    const response = await apiClient.get('/api/zoho/accounts');
+    
+    if (!response || typeof response !== 'object') {
+      console.warn('Invalid accounts response:', response);
+      return [];
+    }
+    
+    const responseMap = fromJS(response);
+    
+    if (!Map.isMap(responseMap)) {
+      console.warn('Response is not an Immutable Map:', response);
+      return [];
+    }
+    
+    // Verificamos estructura con validAccounts
+    if (responseMap.has('validAccounts')) {
+      const accountsData = responseMap.get('validAccounts', List());
+      
+      if (!List.isList(accountsData) || accountsData.isEmpty()) {
+        console.warn('No valid accounts found');
+        return [];
+      }
+      
+      console.log(`Processing ${accountsData.size} accounts from validAccounts...`);
+      
+      // Map each account to proper structure
+      const accounts = accountsData.map((item: any) => {
+        if (!Map.isMap(item)) {
+          console.warn('Account item is not a Map:', item);
+          return null;
+        }
+        
+        const id = item.get('id', '') as string;
+        const name = item.get('name', '') as string;
+        const domain = item.get('domain', '') as string;
+        const isActive = item.get('isActive', true) as boolean;
+        
+        return {
+          id,
+          name,
+          domain,
+          isActive
+        };
+      })
+      .filter((account: any) => account !== null && account.id)
+      .toArray() as ZohoAccount[];
+      
+      console.log(`Returned ${accounts.length} valid accounts from validAccounts`);
+      return accounts;
+    }
+    // Verificamos estructura alternativa con data
+    else if (responseMap.has('data')) {
+      const accountsData = responseMap.get('data', List());
+      
+      if (!List.isList(accountsData) || accountsData.isEmpty()) {
+        console.warn('No valid accounts data found');
+        return [];
+      }
+      
+      console.log(`Processing ${accountsData.size} accounts from data...`);
+      
+      // Map each account to proper structure
+      const accounts = accountsData.map((item: any) => {
+        if (!Map.isMap(item)) {
+          console.warn('Account item is not a Map:', item);
+          return null;
+        }
+        
+        const id = item.get('id', '') as string;
+        const name = item.get('name', '') as string;
+        const domain = item.get('domain', '') as string;
+        const isActive = item.get('isActive', true) as boolean;
+        
+        return {
+          id,
+          name,
+          domain,
+          isActive
+        };
+      })
+      .filter((account: any) => account !== null && account.id)
+      .toArray() as ZohoAccount[];
+      
+      console.log(`Returned ${accounts.length} valid accounts from data`);
+      return accounts;
+    } 
+    else {
+      console.warn('Unexpected accounts response structure - no validAccounts or data found:', 
+        responseMap?.toString().substring(0, 200));
+      return [];
+    }
+  } catch (error) {
+    console.error('Error fetching accounts:', error);
+    throw error;
+  }
+};
+
 // Export the service functions
 export const zohoService = {
   authenticateUser,
@@ -380,5 +486,6 @@ export const zohoService = {
   createTicket,
   getDashboardStats,
   getCategories,
-  getContacts
+  getContacts,
+  getAccounts
 };

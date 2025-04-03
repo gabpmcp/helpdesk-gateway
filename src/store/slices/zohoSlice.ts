@@ -49,7 +49,26 @@ export const fetchReportsWebhook = createAsyncThunk(
     } catch (error) {
       // Return error for the rejected action
       return rejectWithValue(
-        error instanceof Error ? error.message : 'Failed to fetch reports webhook data'
+        error instanceof Error ? error.message : 'Failed to fetch reports from webhook'
+      );
+    }
+  }
+);
+
+// Async thunk for creating a new ticket
+export const createTicket = createAsyncThunk(
+  'zoho/createTicket',
+  async (ticketData: any, { rejectWithValue }) => {
+    try {
+      // Call the service function to create ticket
+      const response = await zohoService.createTicket(ticketData);
+      
+      // Return the ticket data for the fulfilled action
+      return response;
+    } catch (error) {
+      // Return error for the rejected action
+      return rejectWithValue(
+        error instanceof Error ? error.message : 'Failed to create ticket'
       );
     }
   }
@@ -103,6 +122,22 @@ const zohoSlice = createSlice({
       })
       // Handle webhook fetch error
       .addCase(fetchReportsWebhook.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string || 'An error occurred';
+      })
+      // Handle create ticket pending state
+      .addCase(createTicket.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      // Handle create ticket successful
+      .addCase(createTicket.fulfilled, (state, action) => {
+        // Convert the payload to an Immutable.js Map
+        state.data = fromJS(action.payload);
+        state.loading = false;
+      })
+      // Handle create ticket error
+      .addCase(createTicket.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string || 'An error occurred';
       });

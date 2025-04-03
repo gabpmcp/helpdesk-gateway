@@ -42,6 +42,13 @@ export interface ZohoContactRecord {
   type?: string;
 }
 
+export interface ZohoAccountRecord {
+  id: ZohoId;
+  name: string;
+  domain?: string;
+  isActive?: boolean;
+}
+
 export interface ZohoDashboardStatsRecord {
   totalTickets: number;
   openTickets: number;
@@ -88,6 +95,7 @@ export type ImmutableTicket = Map<string, any>;
 export type ImmutableComment = Map<string, any>;
 export type ImmutableCategory = Map<string, any>;
 export type ImmutableContact = Map<string, any>;
+export type ImmutableAccount = Map<string, any>;
 export type ImmutableDashboardStats = Map<string, any>;
 export type ImmutableFilters = Map<string, any>;
 export type ImmutableAuthResponse = Map<string, any>;
@@ -128,6 +136,13 @@ export const ContactRecord = ImmutableRecord<ZohoContactRecord>({
   email: undefined,
   phone: undefined,
   type: undefined
+});
+
+export const AccountRecord = ImmutableRecord<ZohoAccountRecord>({
+  id: '',
+  name: '',
+  domain: undefined,
+  isActive: undefined
 });
 
 export const DashboardStatsRecord = ImmutableRecord<ZohoDashboardStatsRecord>({
@@ -228,6 +243,13 @@ export interface ZohoContact {
   type?: string;
 }
 
+export interface ZohoAccount {
+  id: string;
+  name: string;
+  domain?: string;
+  isActive?: boolean;
+}
+
 export interface ZohoDashboardStats {
   ticketCount: number;
   openTicketCount: number;
@@ -287,6 +309,7 @@ export type ZohoTicketInput = Omit<ZohoTicket, 'id' | 'createdTime' | 'modifiedT
   dueDate?: string;
   departmentId?: string;
   contactId?: string;
+  accountId?: string;
 };
 
 export type ZohoCommentInput = Omit<ZohoComment, 'id' | 'createdTime' | 'createdBy'>;
@@ -306,6 +329,9 @@ export const toImmutableCategory = (category: ZohoCategory): ImmutableCategory =
 
 export const toImmutableContact = (contact: ZohoContact): ImmutableContact => 
   Map(contact);
+
+export const toImmutableAccount = (account: ZohoAccount): ImmutableAccount => 
+  Map(account);
 
 export const toImmutableFilters = (filters: ZohoFilters): ImmutableFilters => 
   Map(filters);
@@ -338,4 +364,11 @@ export const fromImmutableContact = (contact: ImmutableContact): ZohoContact => 
   email: contact.get('email'),
   phone: contact.get('phone'),
   type: contact.get('type')
+});
+
+export const fromImmutableAccount = (account: ImmutableAccount): ZohoAccount => ({
+  id: account.get('id'),
+  name: account.get('name'),
+  domain: account.get('domain'),
+  isActive: account.get('isActive')
 });

@@ -25,16 +25,22 @@ import { SafeSelectItem } from '@/components/ui/safe-select-item';
 import { ArrowLeft, Loader2, Paperclip } from 'lucide-react';
 import { zohoService } from '@/services/zohoService';
 import { useToast } from '@/hooks/use-toast';
-import { ZohoCategory, ZohoContact, ZohoTicketInput } from '@/core/models/zoho.types';
+import { ZohoCategory, ZohoContact, ZohoAccount, ZohoTicketInput } from '@/core/models/zoho.types';
+import { useDispatch } from 'react-redux';
+import { createTicket } from '@/store/slices/zohoSlice';
+import { AppDispatch } from '@/store/store';
 
 const CreateTicket: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const dispatch = useDispatch<AppDispatch>(); // Mover aquí el hook
   const [categories, setCategories] = useState<ZohoCategory[]>([]);
   const [contacts, setContacts] = useState<ZohoContact[]>([]);
+  const [accounts, setAccounts] = useState<ZohoAccount[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingContacts, setIsLoadingContacts] = useState(true);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const [ticket, setTicket] = useState<ZohoTicketInput>({
     subject: '',
     description: '',
@@ -42,6 +48,7 @@ const CreateTicket: React.FC = () => {
     category: '',
     departmentId: '',
     contactId: '',
+    accountId: '',
     status: 'new', 
     dueDate: '' 
   });
@@ -117,6 +124,41 @@ const CreateTicket: React.FC = () => {
     fetchContacts();
   }, [toast]);
 
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        setIsLoadingAccounts(true);
+        const accountsData = await zohoService.getAccounts();
+        console.log('Cuentas obtenidas en CreateTicket:', accountsData);
+        
+        // Filtrar cuentas válidas
+        const validAccounts = accountsData.filter(account => account && account.id && account.name);
+        setAccounts(validAccounts);
+        
+        // Set the first account as default if available
+        if (validAccounts.length > 0) {
+          const firstAccountId = String(validAccounts[0].id);
+          console.log('Estableciendo cuenta por defecto:', firstAccountId, validAccounts[0].name);
+          setTicket(prev => ({ 
+            ...prev, 
+            accountId: firstAccountId
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch accounts:', error);
+        toast({
+          title: "Error loading accounts",
+          description: "Could not load Zoho accounts. Please try again later.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingAccounts(false);
+      }
+    };
+
+    fetchAccounts();
+  }, [toast]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setTicket(prev => ({ ...prev, [name]: value }));
@@ -150,10 +192,18 @@ const CreateTicket: React.FC = () => {
     }));
   };
 
+  const handleAccountChange = (value: string) => {
+    console.log('Cuenta seleccionada:', value);
+    setTicket(prev => ({ 
+      ...prev, 
+      accountId: value
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!ticket.subject.trim() || !ticket.description.trim() || !ticket.category || !ticket.contactId) {
+    if (!ticket.subject.trim() || !ticket.description.trim() || !ticket.category || !ticket.contactId || !ticket.accountId) {
       toast({
         title: "Missing information",
         description: "Please fill in all required fields.",
@@ -179,6 +229,11 @@ const CreateTicket: React.FC = () => {
       if (!ticket.contactId) {
         throw new Error("Es necesario seleccionar un contacto");
       }
+
+      // Asegurar que accountId está presente
+      if (!ticket.accountId) {
+        throw new Error("Es necesario seleccionar una cuenta");
+      }
       
       const ticketInput: ZohoTicketInput = {
         ...ticket,
@@ -187,23 +242,24 @@ const CreateTicket: React.FC = () => {
       
       console.log("Enviando solicitud de creación de ticket:", ticketInput);
       
-      const newTicket = await zohoService.createTicket(ticketInput);
+      // Usar el dispatch ya inicializado en el nivel superior
+      const result = await dispatch(createTicket(ticketInput)).unwrap();
       
       // Verificar que el ticket se haya creado correctamente
-      if (!newTicket || !newTicket.id) {
+      if (!result || !result.id) {
         throw new Error("No se pudo obtener la información del ticket creado");
       }
       
-      console.log("Ticket creado exitosamente:", newTicket);
+      console.log("Ticket creado exitosamente:", result);
       
       toast({
         title: "Ticket creado",
-        description: `Tu ticket #${newTicket.ticketNumber || newTicket.id} ha sido creado exitosamente.`,
-        duration: 5000,
+        description: `Tu ticket #${result.ticketNumber || result.id} ha sido creado exitosamente.`,
+        variant: "default",
       });
       
-      // Redirigir al detalle del ticket
-      navigate(`/tickets/${newTicket.id}`);
+      // Redirigir al detalle del ticket recién creado
+      navigate(`/tickets/${result.id}`);
     } catch (error: any) {
       // Manejo detallado de errores
       const errorMessage = error?.message || "No se pudo crear tu ticket. Por favor intenta más tarde.";
@@ -327,6 +383,43 @@ const CreateTicket: React.FC = () => {
                     </Select>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Account selector */}
+            <div className="space-y-2">
+              <Label htmlFor="account">Account <span className="text-destructive">*</span></Label>
+              <div>
+                {isLoadingAccounts ? (
+                  <div className="flex items-center space-x-2 py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm text-muted-foreground">Loading accounts...</span>
+                  </div>
+                ) : accounts.length === 0 ? (
+                  <div className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+                    No accounts available
+                  </div>
+                ) : (
+                  <Select 
+                    value={ticket.accountId} 
+                    onValueChange={(value) => handleAccountChange(value)}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id="account" className="w-full">
+                      <SelectValue placeholder="Select an account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map(account => (
+                        <SafeSelectItem 
+                          key={account.id} 
+                          value={account.id}
+                        >
+                          {account.name} {account.domain ? `(${account.domain})` : ''}
+                        </SafeSelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 
