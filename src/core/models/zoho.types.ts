@@ -23,9 +23,11 @@ export interface ZohoTicketRecord {
 
 export interface ZohoCommentRecord {
   id: ZohoId;
-  content: string;
-  createdBy: string;
+  comment: string;
+  author: string;
   createdTime: ZohoDateTime;
+  createdTimestamp?: number;
+  ticketId?: string;
   isPublic: boolean;
 }
 
@@ -119,9 +121,11 @@ export const TicketRecord = ImmutableRecord<ZohoTicketRecord>({
 
 export const CommentRecord = ImmutableRecord<ZohoCommentRecord>({
   id: '',
-  content: '',
-  createdBy: '',
+  comment: '',
+  author: '',
   createdTime: '',
+  createdTimestamp: undefined,
+  ticketId: undefined,
   isPublic: true
 });
 
@@ -224,9 +228,11 @@ export interface ZohoTicket {
 
 export interface ZohoComment {
   id: string;
-  content: string;
-  createdBy: string;
+  comment: string;
+  author: string;
   createdTime: string;
+  createdTimestamp?: number;
+  ticketId?: string;
   isPublic: boolean;
 }
 
@@ -365,9 +371,11 @@ export const fromImmutableTicket = (ticket: ImmutableTicket): ZohoTicket => ({
 
 export const fromImmutableComment = (comment: ImmutableComment): ZohoComment => ({
   id: comment.get('id'),
-  content: comment.get('content'),
-  createdBy: comment.get('createdBy'),
+  comment: comment.get('comment'),
+  author: comment.get('author'),
   createdTime: comment.get('createdTime'),
+  createdTimestamp: comment.get('createdTimestamp'),
+  ticketId: comment.get('ticketId'),
   isPublic: comment.get('isPublic')
 });
 

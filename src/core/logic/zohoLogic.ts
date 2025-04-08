@@ -32,14 +32,38 @@ export const transformTicket = (rawTicket: any): ImmutableTicket =>
   });
 
 // Pure function to transform raw API comment data
-export const transformComment = (rawComment: any): ImmutableComment => 
-  Map({
-    id: rawComment.id,
-    content: rawComment.content,
-    createdBy: rawComment.createdBy,
-    createdTime: rawComment.createdTime,
-    isPublic: rawComment.isPublic ?? true,
+export const transformComment = (rawComment: any): ImmutableComment => {
+  // Acceso defensivo para manejar diferentes estructuras de datos posibles
+  const getField = (field: string, altField: string, defaultValue: any = undefined) => {
+    // Primero intenta el campo nuevo (estructura n8n)
+    if (rawComment[field] !== undefined) return rawComment[field];
+    // Luego intenta el campo alternativo (estructura antigua)
+    if (rawComment[altField] !== undefined) return rawComment[altField];
+    // Verifica si es una estructura inmutable
+    if (rawComment && rawComment.get) {
+      if (rawComment.get(field) !== undefined) return rawComment.get(field);
+      if (rawComment.get(altField) !== undefined) return rawComment.get(altField);
+    }
+    // Valor por defecto como último recurso
+    return defaultValue;
+  };
+
+  // Crear un objeto inmutable con ambas nomenclaturas para compatibilidad
+  return Map({
+    id: getField('id', 'id', ''),
+    // Nomenclatura nueva (n8n)
+    comment: getField('comment', 'content', ''),
+    author: getField('author', 'createdBy', ''),
+    // Nomenclatura anterior (para compatibilidad)
+    content: getField('comment', 'content', ''),
+    createdBy: getField('author', 'createdBy', ''),
+    // Campos comunes
+    createdTime: getField('createdTime', 'createdTime', ''),
+    createdTimestamp: getField('createdTimestamp', 'createdTimestamp', 0),
+    ticketId: getField('ticketId', 'ticketId', ''),
+    isPublic: getField('isPublic', 'isPublic', true),
   });
+};
 
 // Pure function to transform raw API category data
 export const transformCategory = (rawCategory: any): ImmutableCategory => 

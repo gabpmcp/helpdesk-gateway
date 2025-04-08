@@ -76,7 +76,7 @@ const TicketDetail: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const fetchTicketData = () => {
+    const fetchTicketData = async () => {
       if (!id) {
         console.error('ID de ticket no proporcionado');
         toast({
@@ -289,12 +289,16 @@ const TicketDetail: React.FC = () => {
                       {getVisibleComments().map((comment, index) => (
                         <div key={index} className="border-b pb-4 last:border-0">
                           <div className="flex justify-between items-start">
-                            <div className="font-semibold">{comment.get('author', 'Usuario')}</div>
+                            <div className="font-semibold">
+                              {comment.get('author', 'Usuario')}
+                            </div>
                             <div className="text-xs text-gray-500">
                               {formatDate(comment.get('createdTime', ''))}
                             </div>
                           </div>
-                          <div className="mt-2 text-gray-700">{comment.get('comment', '')}</div>
+                          <div className="mt-2 text-gray-700 whitespace-pre-wrap">
+                            {comment.get('comment', '')}
+                          </div>
                           {comment.get('isPublic') === false && (
                             <div className="mt-1 text-xs text-amber-600 font-medium">Comentario privado</div>
                           )}
