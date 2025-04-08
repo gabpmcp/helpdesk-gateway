@@ -94,19 +94,26 @@ const Tickets: React.FC = () => {
 
   useEffect(() => {
     // Functional approach to fetch categories
-    const fetchCategories = () => 
-      Promise.resolve(zohoService.getCategories())
+    const fetchCategories = () => {
+      zohoService.getCategories()
         .then(categoriesData => {
+          console.log('Categories received from zohoService:', categoriesData);
           setCategories(fromJS(categoriesData));
           return categoriesData;
         })
         .catch(error => {
           console.error('Failed to fetch categories:', error);
-          return Promise.reject(error);
+          toast({
+            title: "Error al cargar categorías",
+            description: error.message || "No se pudieron cargar las categorías. Por favor intente de nuevo.",
+            variant: "destructive"
+          });
+          return [];
         });
+    };
 
     fetchCategories();
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     // Functional approach to fetch tickets
@@ -115,45 +122,82 @@ const Tickets: React.FC = () => {
       
       const filtersObj = filters;
       
-      return Promise.resolve(zohoService.getTickets(filtersObj))
+      // Construir query string para los filtros (solo para logging)
+      const queryParams = new URLSearchParams();
+      Object.entries(filtersObj)
+        .filter(([_, value]) => value !== undefined && value !== null && value !== '')
+        .forEach(([key, value]) => queryParams.append(key, String(value)));
+      
+      const queryString = queryParams.toString();
+      console.log('Fetching tickets with filters:', filtersObj, 'Query string:', queryString);
+      
+      zohoService.getTickets(filtersObj)
         .then(result => {
-          console.log('Tickets recibidos de la API:', result.tickets);
+          console.log('===== DIAGNÓSTICO DE RESPUESTA =====');
+          console.log('Respuesta completa de zohoService:', result);
+          
+          // Análisis de estructura
+          console.log('Tipo de resultado:', typeof result);
+          
+          // Verificar si es un objeto con la estructura esperada
+          if (result) {
+            console.log('¿Tiene propiedad tickets?', 'tickets' in result ? 'Sí' : 'No');
+            
+            if ('tickets' in result) {
+              const tickets = result.tickets;
+              console.log('Tipo de tickets:', typeof tickets);
+              console.log('¿Es array?', Array.isArray(tickets) ? 'Sí' : 'No');
+              console.log('Cantidad de tickets:', Array.isArray(tickets) ? tickets.length : 'N/A');
+              
+              // Mostrar primer ticket si existe
+              if (Array.isArray(tickets) && tickets.length > 0) {
+                console.log('Primer ticket (muestra):', tickets[0]);
+                console.log('Propiedades del primer ticket:', Object.keys(tickets[0]));
+              } else {
+                console.log('No hay tickets disponibles en la respuesta');
+              }
+            } else {
+              console.log('La respuesta no contiene la propiedad "tickets"');
+              console.log('Propiedades disponibles:', Object.keys(result));
+            }
+          } else {
+            console.log('La respuesta es nula o indefinida');
+          }
+          
+          console.log('===== FIN DIAGNÓSTICO =====');
           
           // Verificar si tenemos datos
-          if (!result.tickets || !Array.isArray(result.tickets)) {
+          if (!result?.tickets || !Array.isArray(result.tickets)) {
             console.error('No se recibieron tickets válidos:', result);
             setTickets(List([]));
+            setLoading(false);
             return result;
           }
           
           // Asegurar que cada ticket tiene un ID único
           const ticketsWithIds = result.tickets.map((ticket, index) => {
-            // Si no tiene ID, asignar uno basado en el índice
-            if (!ticket.id || ticket.id === 'undefined') {
-              return {
-                ...ticket,
-                id: `new-ticket-${index}`,  // ID temporal si no hay ID real
-                _generatedId: true          // Marcar como ID generado
-              };
+            if (!ticket.id) {
+              return { ...ticket, id: `temp-${index}` };
             }
             return ticket;
           });
           
-          // Convertir a estructura inmutable asegurando el ID
-          setTickets(fromJS(ticketsWithIds));
+          // Convertir a estructura inmutable y aplicar filtros/ordenamiento
+          const immutableTickets = fromJS(ticketsWithIds);
+          setTickets(immutableTickets);
+          setLoading(false);
           return result;
         })
         .catch(error => {
+          console.error('Error al cargar tickets:', error);
           toast({
-            title: "Error loading tickets",
-            description: "Could not load tickets. Please try again later.",
-            variant: "destructive",
+            title: "Error al cargar tickets",
+            description: error.message || "No se pudieron cargar los tickets. Por favor intente de nuevo.",
+            variant: "destructive"
           });
-          console.error("Ticket loading error:", error);
-          return Promise.reject(error);
-        })
-        .finally(() => {
+          setTickets(List([]));
           setLoading(false);
+          return { tickets: [], error: error.message };
         });
     };
 

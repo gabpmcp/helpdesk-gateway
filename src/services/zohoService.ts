@@ -180,26 +180,33 @@ const getTickets = async (filters: ZohoFilters = {}): Promise<TicketsResponse> =
  * @returns Datos de tickets procesados
  */
 const processTicketsResponse = (response: any): TicketsResponse => {
-  // Verificación básica de la estructura de respuesta
-  if (!isImmutableMap(response)) {
-    console.warn('Tickets response is not an Immutable Map');
-    return defaultTicketsResponse();
-  }
+  // Convertir a Immutable si no lo es ya
+  const immutableResponse = isImmutableMap(response) ? response : fromJS(response);
+  
+  console.log('Respuesta procesada como Immutable:', immutableResponse);
   
   // Extraer tickets según la estructura de la respuesta
   let ticketsData;
   
   // Caso 1: tickets en campo 'tickets'
-  if (response.has('tickets')) {
-    ticketsData = safeGet(response, 'tickets', List());
+  if (immutableResponse.has('tickets')) {
+    ticketsData = safeGet(immutableResponse, 'tickets', List());
   }
   // Caso 2: tickets en campo 'data'
-  else if (response.has('data')) {
-    ticketsData = safeGet(response, 'data', List());
+  else if (immutableResponse.has('data')) {
+    ticketsData = safeGet(immutableResponse, 'data', List());
   }
   // Caso 3: la respuesta misma es la lista de tickets
-  else if (List.isList(response)) {
-    ticketsData = response;
+  else if (List.isList(immutableResponse)) {
+    ticketsData = immutableResponse;
+  }
+  // Si no se encuentra en ninguna estructura conocida, intentamos con la respuesta original
+  else if (response && (response.tickets || response.data)) {
+    // Intentamos extraer tickets de la respuesta original (objeto regular)
+    const rawTickets = response.tickets || response.data || [];
+    // Convertimos a Immutable List
+    ticketsData = fromJS(rawTickets);
+    console.log('Extrayendo tickets desde respuesta regular:', rawTickets.length);
   }
   // Ningún caso válido
   else {
@@ -214,9 +221,9 @@ const processTicketsResponse = (response: any): TicketsResponse => {
   
   // Extraer metadatos con valores por defecto
   const metaData = Map({
-    total: safeGet(response, 'total', transformedTickets.size),
-    page: safeGet(response, 'page', 1),
-    timestamp: safeGet(response, 'timestamp', new Date().toISOString())
+    total: safeGet(immutableResponse, 'total', transformedTickets.size),
+    page: safeGet(immutableResponse, 'page', 1),
+    timestamp: safeGet(immutableResponse, 'timestamp', new Date().toISOString())
   });
   
   // Log de procesamiento

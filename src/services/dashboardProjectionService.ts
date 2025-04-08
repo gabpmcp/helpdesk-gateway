@@ -14,7 +14,7 @@ const apiClient = createApiClient();
 // Configuración de URLs - solo para referencia, no la usamos directamente
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 // Endpoint relativo - apiClient ya agrega la URL base configurada
-const DASHBOARD_ENDPOINT = '/api/zoho/reports-overview';
+const DASHBOARD_ENDPOINT = '/projections/overview';
 
 /**
  * Verifica si una respuesta es HTML en lugar de JSON
