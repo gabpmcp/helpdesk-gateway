@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Map, List, fromJS } from 'immutable';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -20,7 +20,9 @@ import {
   MoreVertical, 
   Send,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Loader2,
+  Paperclip
 } from 'lucide-react';
 import { zohoService } from '@/services/zohoService';
 import { toJS } from '@/core/logic/zohoLogic';
@@ -31,7 +33,9 @@ type ImmutableComment = Map<string, any>;
 
 const TicketDetail: React.FC = () => {
   const [ticket, setTicket] = useState<ImmutableTicket | null>(null);
+  const [comments, setComments] = useState<List<ImmutableComment>>(List());
   const [loading, setLoading] = useState<boolean>(true);
+  const [commentsLoading, setCommentsLoading] = useState<boolean>(false);
   const [comment, setComment] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [showAllComments, setShowAllComments] = useState<boolean>(false);
@@ -40,11 +44,39 @@ const TicketDetail: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  /**
+   * Función pura para cargar comentarios
+   * @param ticketId - ID del ticket para cargar comentarios
+   */
+  const fetchComments = useCallback((ticketId: string) => {
+    setCommentsLoading(true);
+    console.log(`Iniciando carga de comentarios para ticket: ${ticketId}`);
+    
+    Promise.resolve(zohoService.getTicketComments(ticketId))
+      .then(commentsData => {
+        console.log('Comentarios recibidos:', commentsData);
+        
+        if (commentsData && Array.isArray(commentsData)) {
+          // Convertir a estructura inmutable con programación defensiva
+          const immutableComments = List(commentsData.map(comment => fromJS(comment)));
+          console.log('Comentarios transformados a estructura inmutable:', immutableComments.toJS());
+          setComments(immutableComments);
+        } else {
+          console.warn('No se recibieron comentarios válidos');
+          setComments(List());
+        }
+      })
+      .catch(error => {
+        console.error(`Error al cargar comentarios para ticket ${ticketId}:`, error);
+        setComments(List());
+      })
+      .finally(() => {
+        setCommentsLoading(false);
+      });
+  }, []);
+
   useEffect(() => {
-    // Functional approach to fetch ticket data
     const fetchTicketData = () => {
-      console.log(`Intentando obtener el ticket con ID: "${id}"`);
-      
       if (!id) {
         console.error('ID de ticket no proporcionado');
         toast({
@@ -65,6 +97,10 @@ const TicketDetail: React.FC = () => {
           if (data) {
             // Convert data to immutable structure
             setTicket(fromJS(data));
+            
+            // Fetch comments separately after getting the ticket
+            fetchComments(id);
+            
             return data;
           }
           
@@ -88,7 +124,7 @@ const TicketDetail: React.FC = () => {
     };
 
     fetchTicketData();
-  }, [id, toast]);
+  }, [id, toast, fetchComments]);
 
   // Pure function to handle comment submission
   const handleCommentSubmit = () => {
@@ -96,34 +132,31 @@ const TicketDetail: React.FC = () => {
 
     setSubmitting(true);
     
-    Promise.resolve(zohoService.addComment(id, { content: comment, isPublic: true }))
+    // Usando el campo comment en lugar de content, según la estructura actual
+    Promise.resolve(zohoService.addComment(id, { comment: comment, isPublic: true }))
       .then(newComment => {
         // Convert new comment to immutable structure
         const immutableComment = fromJS(newComment);
+        console.log('Nuevo comentario añadido:', newComment);
         
-        // Update ticket with new comment using immutable operations
-        setTicket(prevTicket => 
-          prevTicket ? prevTicket
-            .update('comments', List(), comments => comments.push(immutableComment))
-            .set('modifiedTime', new Date().toISOString())
-            : prevTicket
-        );
+        // Add to the existing comments list (inmutable update)
+        setComments(prevComments => prevComments.push(immutableComment));
         
         // Reset comment input
         setComment('');
         
         toast({
-          title: "Comment added",
-          description: "Your comment has been added to the ticket.",
+          title: "Comentario añadido",
+          description: "Tu comentario ha sido añadido al ticket.",
         });
       })
       .catch(error => {
         toast({
-          title: "Error adding comment",
-          description: "Could not add your comment. Please try again later.",
+          title: "Error al añadir comentario",
+          description: "No se pudo añadir tu comentario. Inténtalo de nuevo más tarde.",
           variant: "destructive",
         });
-        console.error("Comment submission error:", error);
+        console.error("Error al enviar comentario:", error);
       })
       .finally(() => {
         setSubmitting(false);
@@ -150,63 +183,44 @@ const TicketDetail: React.FC = () => {
   };
 
   // Pure function to get visible comments
-  const getVisibleComments = (ticketData: ImmutableTicket | null): List<ImmutableComment> => {
-    if (!ticketData) return List();
+  const getVisibleComments = (): List<ImmutableComment> => {
+    // Usar los comentarios cargados separadamente
+    if (!comments || !comments.size) return List();
     
-    const comments = ticketData.get('comments', List());
     return showAllComments 
       ? comments 
       : comments.size > 3 
         ? comments.slice(-3) 
         : comments;
   };
-
-  // Get visible comments
-  const visibleComments = getVisibleComments(ticket);
-  const hasMoreComments = ticket ? ticket.get('comments', List()).size > 3 : false;
+  
+  // Determinar si hay más de 3 comentarios para mostrar el botón "Ver más"
+  const hasMoreComments = comments.size > 3;
 
   // Render loading state
   if (loading) {
     return (
-      <div className="container mx-auto py-6 space-y-4">
-        <div className="flex items-center space-x-2 mb-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/tickets')}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Volver a tickets
-          </Button>
+      <div className="flex justify-center items-center h-screen">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+          <p className="mt-2">Cargando detalles del ticket...</p>
         </div>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="animate-pulse space-y-4">
-              <div className="h-4 bg-secondary rounded w-3/4"></div>
-              <div className="h-4 bg-secondary rounded w-1/2"></div>
-              <div className="h-24 bg-secondary rounded"></div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     );
   }
 
-  // Render error state - no ticket found
+  // Return empty state if no ticket loaded
   if (!ticket) {
     return (
-      <div className="container mx-auto py-6 space-y-4">
-        <div className="flex items-center space-x-2 mb-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/tickets')}>
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-white rounded-xl p-6 shadow-sm text-center">
+          <h1 className="text-2xl font-semibold mb-4">No se encontró el ticket</h1>
+          <p className="text-gray-500 mb-4">No se pudieron cargar los detalles del ticket solicitado.</p>
+          <Button onClick={() => navigate('/tickets')}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Volver a tickets
           </Button>
         </div>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <h2 className="text-2xl font-bold text-destructive mb-2">Ticket no encontrado</h2>
-            <p className="text-muted-foreground mb-4">
-              El ticket con ID "{id}" no se pudo encontrar o no existe.
-            </p>
-            <Button onClick={() => navigate('/tickets')}>Ver todos los tickets</Button>
-          </CardContent>
-        </Card>
       </div>
     );
   }
@@ -250,55 +264,79 @@ const TicketDetail: React.FC = () => {
               <CardTitle className="text-lg font-medium">Comments</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {hasMoreComments && (
-                <Button 
-                  variant="ghost" 
-                  className="w-full text-sm" 
-                  onClick={() => setShowAllComments(!showAllComments)}
-                >
-                  {showAllComments ? (
-                    <>Show Less <ChevronUp className="ml-2 h-4 w-4" /></>
-                  ) : (
-                    <>Show All Comments <ChevronDown className="ml-2 h-4 w-4" /></>
-                  )}
-                </Button>
-              )}
-
-              {visibleComments.size > 0 ? (
-                visibleComments.map((comment, index) => (
-                  <div key={comment.get('id', index)} className="flex gap-4 pb-4 border-b last:border-0">
-                    <Avatar>
-                      <AvatarFallback>{(comment.getIn(['createdBy', 'name'], 'User') as string).charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{comment.getIn(['createdBy', 'name'], 'User') as string}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(comment.get('createdTime', '') as string)}
-                        </span>
-                      </div>
-                      <p className="text-sm">{comment.get('content', '') as string}</p>
-                    </div>
-                  </div>
-                ))
+              {commentsLoading ? (
+                <div className="flex justify-center p-4">
+                  <Loader2 className="w-8 h-8 animate-spin" />
+                </div>
               ) : (
-                <p className="text-center text-muted-foreground py-4">No comments yet</p>
+                <>
+                  {hasMoreComments && (
+                    <Button 
+                      variant="ghost" 
+                      className="w-full text-sm" 
+                      onClick={() => setShowAllComments(!showAllComments)}
+                    >
+                      {showAllComments ? (
+                        <>Mostrar menos <ChevronUp className="ml-2 h-4 w-4" /></>
+                      ) : (
+                        <>Ver todos los comentarios <ChevronDown className="ml-2 h-4 w-4" /></>
+                      )}
+                    </Button>
+                  )}
+                
+                  {getVisibleComments().size > 0 ? (
+                    <div className="space-y-4">
+                      {getVisibleComments().map((comment, index) => (
+                        <div key={index} className="border-b pb-4 last:border-0">
+                          <div className="flex justify-between items-start">
+                            <div className="font-semibold">{comment.get('author', 'Usuario')}</div>
+                            <div className="text-xs text-gray-500">
+                              {formatDate(comment.get('createdTime', ''))}
+                            </div>
+                          </div>
+                          <div className="mt-2 text-gray-700">{comment.get('comment', '')}</div>
+                          {comment.get('isPublic') === false && (
+                            <div className="mt-1 text-xs text-amber-600 font-medium">Comentario privado</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center text-gray-500 py-4">
+                      No hay comentarios para este ticket
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="pt-4">
                 <Textarea
-                  placeholder="Add a comment..."
+                  placeholder="Agregar un comentario..."
                   value={comment}
-                  onChange={e => setComment(e.target.value)}
-                  className="min-h-[100px]"
+                  onChange={(e) => setComment(e.target.value)}
+                  className="resize-none"
+                  rows={3}
                 />
-                <div className="flex justify-end mt-2">
+                <div className="flex justify-between mt-2">
+                  <Button variant="outline" className="text-sm" disabled>
+                    <Paperclip className="mr-2 h-4 w-4" /> Adjuntar
+                  </Button>
                   <Button 
                     onClick={handleCommentSubmit} 
-                    disabled={!comment.trim() || submitting}
+                    disabled={!comment.trim() || submitting} 
+                    className="text-sm"
                   >
-                    {submitting ? 'Sending...' : 'Send'}
-                    <Send className="ml-2 h-4 w-4" />
+                    {submitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="mr-2 h-4 w-4" />
+                        Enviar
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>
@@ -357,7 +395,7 @@ const TicketDetail: React.FC = () => {
                 <div className="flex items-center gap-2 text-sm">
                   <MessageSquare className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    <strong>{ticket.get('comments', List()).size}</strong> comments
+                    <strong>{comments.size}</strong> comments
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">

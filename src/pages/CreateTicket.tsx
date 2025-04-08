@@ -15,12 +15,9 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
 import { SafeSelectItem } from '@/components/ui/safe-select-item';
 import { ArrowLeft, Loader2, Paperclip } from 'lucide-react';
 import { zohoService } from '@/services/zohoService';

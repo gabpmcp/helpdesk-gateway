@@ -359,8 +359,41 @@ const getTicketComments = async (ticketId: string): Promise<ZohoComment[]> => {
 const processCommentsResponse = (response: any, ticketId: string): ZohoComment[] => {
   // Log para depuración usando utilidad segura
   safeLog('Raw comments response:', response);
+
+  // Caso 1: La respuesta tiene estructura específica del workflow n8n
+  // [{ comments: [ {...}, {...} ] }]
+  if (response && Array.isArray(response) && response.length > 0 && response[0].comments) {
+    console.log(`Se encontraron ${response[0].comments.length} comentarios en formato workflow n8n`);
+    
+    // Mantener los nombres de campos originales (comment, author) sin transformar
+    return response[0].comments.map((comment: any) => ({
+      id: comment.id || '',
+      comment: comment.comment || '', // Mantener el campo 'comment' original
+      author: comment.author || '',    // Mantener el campo 'author' original
+      createdTime: comment.createdTime || '',
+      createdTimestamp: comment.createdTimestamp || 0,
+      ticketId: comment.ticketId || '',
+      isPublic: comment.isPublic || false
+    }));
+  }
   
-  // Verificación esencial usando isImmutableMap
+  // Caso 2: La respuesta tiene un array de comments directamente
+  if (response && Array.isArray(response.comments)) {
+    console.log(`Se encontraron ${response.comments.length} comentarios en formato directo`);
+    
+    // Mantener los nombres de campos originales (comment, author) sin transformar
+    return response.comments.map((comment: any) => ({
+      id: comment.id || '',
+      comment: comment.comment || '', // Mantener el campo 'comment' original
+      author: comment.author || '',    // Mantener el campo 'author' original
+      createdTime: comment.createdTime || '',
+      createdTimestamp: comment.createdTimestamp || 0,
+      ticketId: comment.ticketId || '',
+      isPublic: comment.isPublic || false
+    }));
+  }
+  
+  // Verificación esencial usando isImmutableMap para el formato anterior
   if (!isImmutableMap(response)) {
     console.warn('Comments response is not an Immutable Map');
     return [];
@@ -480,14 +513,18 @@ const processCreatedTicketResponse = (response: any): ZohoTicket => {
   // Caso 2: Ticket en campo ticket
   if (response.has('ticket')) {
     const ticketData = safeGet(response, 'ticket', Map());
-    const transformedTicket = transformTicket(fromJS(ticketData));
+    // Usar cast explícito para asegurar compatibilidad de tipos
+    const typedData = fromJS(ticketData) as Map<string, any>;
+    const transformedTicket = transformTicket(typedData);
     return transformedTicket.toJS() as ZohoTicket;
   }
   
   // Caso 3: Ticket en campo data
   if (response.has('data')) {
     const ticketData = safeGet(response, 'data', Map());
-    const transformedTicket = transformTicket(fromJS(ticketData));
+    // Usar cast explícito para asegurar compatibilidad de tipos
+    const typedData = fromJS(ticketData) as Map<string, any>;
+    const transformedTicket = transformTicket(typedData);
     return transformedTicket.toJS() as ZohoTicket;
   }
   
@@ -514,8 +551,9 @@ const getDashboardStats = async (): Promise<ZohoDashboardStats> => {
       return {} as ZohoDashboardStats;
     }
     
-    // Transformar los datos del dashboard
-    const immutableStats = transformDashboardStats(safeToJS(response));
+    // Transformar los datos del dashboard usando cast explícito para garantizar compatibilidad de tipos
+    const responseData = safeToJS(response) as Record<string, any>;
+    const immutableStats = transformDashboardStats(responseData);
     
     // Devolver los datos transformados
     return immutableStats.toJS() as ZohoDashboardStats;
