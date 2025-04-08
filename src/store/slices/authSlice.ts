@@ -119,14 +119,31 @@ const authSlice = createSlice({
   initialState,
   reducers: {
     logout: (state) => {
-      // Primero eliminamos cualquier información de autenticación del localStorage
+      // Eliminamos todas las claves de autenticación del localStorage
       localStorage.removeItem('auth');
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('user');
       
       // Luego restablecemos el estado a su valor inicial
       return initialState;
     },
     clearError: (state) => {
       state.error = null;
+    },
+    // Acción para manejar el login manual/simulado
+    loginSuccess: (state, action) => {
+      const { email, accessToken, refreshToken } = action.payload;
+      state.isLoading = false;
+      state.isAuthenticated = true;
+      state.email = email;
+      state.tokens = {
+        accessToken,
+        refreshToken
+      };
+      state.error = null;
+      
+      // Actualizar localStorage
+      localStorage.setItem('isLoggedIn', 'true');
     }
   },
   extraReducers: (builder) => {
@@ -145,6 +162,9 @@ const authSlice = createSlice({
           refreshToken: action.payload.refreshToken
         };
         state.error = null;
+        
+        // Guardamos el estado de autenticación en localStorage
+        localStorage.setItem('isLoggedIn', 'true');
       })
       .addCase(loginAttempt.rejected, (state, action) => {
         state.isLoading = false;
@@ -177,5 +197,5 @@ const authSlice = createSlice({
 });
 
 // Export actions and reducer
-export const { logout, clearError } = authSlice.actions;
+export const { logout, clearError, loginSuccess } = authSlice.actions;
 export default authSlice.reducer;

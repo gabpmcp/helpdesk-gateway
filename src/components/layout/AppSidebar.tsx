@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
@@ -11,18 +10,10 @@ import {
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger 
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 export const AppSidebar: React.FC = () => {
-  const { toast } = useToast();
-
-  const handleLogout = () => {
-    // Will implement actual logout functionality later
-    toast({
-      title: "Logged out",
-      description: "You have been successfully logged out.",
-    });
-  };
+  const { logout } = useAuth();
 
   return (
     <Sidebar>
@@ -136,7 +127,7 @@ export const AppSidebar: React.FC = () => {
             <span>Help & Support</span>
           </NavLink>
           
-          <Button variant="outline" className="w-full justify-start" onClick={handleLogout}>
+          <Button variant="outline" className="w-full justify-start" onClick={logout}>
             <LogOut className="h-4 w-4 mr-2" />
             <span>Logout</span>
           </Button>

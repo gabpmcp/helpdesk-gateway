@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Bell, Search, User, Settings, LogOut } from 'lucide-react';
 import { 
@@ -14,8 +13,17 @@ import { Input } from '@/components/ui/input';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 
 export const TopBar: React.FC = () => {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+  
+  // Manejadores para la navegación
+  const handleProfileClick = () => navigate('/profile');
+  const handleSettingsClick = () => navigate('/settings');
+  
   return (
     <header className="border-b bg-card sticky top-0 z-30">
       <div className="flex h-16 items-center px-4 md:px-6">
@@ -77,16 +85,16 @@ export const TopBar: React.FC = () => {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer">
+              <DropdownMenuItem className="cursor-pointer" onClick={handleProfileClick}>
                 <User className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer">
+              <DropdownMenuItem className="cursor-pointer" onClick={handleSettingsClick}>
                 <Settings className="mr-2 h-4 w-4" />
                 <span>Settings</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer">
+              <DropdownMenuItem className="cursor-pointer" onClick={logout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Logout</span>
               </DropdownMenuItem>

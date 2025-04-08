@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -15,46 +14,34 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Mail, Lock, Github, CircleUser } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 export const LoginForm: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { login, isLoading } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!email || !password) {
       toast({
-        title: "Invalid credentials",
-        description: "Please enter both email and password.",
+        title: "Credenciales inválidas",
+        description: "Por favor ingresa email y contraseña.",
         variant: "destructive",
       });
       return;
     }
     
-    setIsLoading(true);
+    // Usar el hook de autenticación
+    login(email, password);
     
-    // Simulate API call
+    // La navegación a dashboard se realiza después del login exitoso
     setTimeout(() => {
-      setIsLoading(false);
-      // Simple demo login - in a real app this would check credentials
-      localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('user', JSON.stringify({
-        name: 'John Doe',
-        email: email,
-        role: 'client'
-      }));
-      
-      toast({
-        title: "Login successful",
-        description: "Welcome to the Helpdesk Portal!",
-      });
-      
       navigate('/');
-    }, 1500);
+    }, 1000);
   };
 
   return (

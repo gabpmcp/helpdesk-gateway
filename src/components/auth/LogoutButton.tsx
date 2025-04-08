@@ -1,9 +1,7 @@
 import React from 'react';
-import { useDispatch } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
-import { logout } from '@/store/slices/authSlice';
+import { useAuth } from '@/hooks/useAuth';
 
 interface LogoutButtonProps {
   variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
@@ -18,21 +16,14 @@ export const LogoutButton: React.FC<LogoutButtonProps> = ({
   className = '',
   showIcon = true
 }) => {
-  const dispatch = useDispatch();
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    dispatch(logout());
-    // Redireccionar al usuario a la página de login
-    navigate('/login');
-  };
+  const { logout } = useAuth();
 
   return (
     <Button
       variant={variant}
       size={size}
       className={className}
-      onClick={handleLogout}
+      onClick={logout}
     >
       {showIcon && <LogOut className="mr-2 h-4 w-4" />}
       Cerrar sesión
