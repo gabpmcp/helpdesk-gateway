@@ -1,0 +1,13 @@
+{
+  "api": {
+    "baseUrl": "https://api.helpdesk-example.com",
+    "timeout": 30000
+  },
+  "n8n": {
+    "webhookUrl": "https://n8n.advancio.io/webhook"
+  },
+  "auth": {
+    "tokenKey": "helpdesk-auth"
+  },
+  "env": "production"
+}

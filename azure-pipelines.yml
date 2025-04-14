@@ -1,0 +1,139 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - helpdesk-gateway/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# Definir variables que serán diferentes en cada ambiente
+variables:
+  - name: isDev
+    value: $[eq(variables['Build.SourceBranchName'], 'develop')]
+
+steps:
+- task: NodeTool@0
+  inputs:
+    versionSpec: '20.x'
+  displayName: 'Instalar Node.js'
+
+- script: |
+    cd helpdesk-gateway
+    npm ci
+  displayName: 'Instalar dependencias'
+
+# Generar config.json dinámico para el entorno específico
+- task: Bash@3
+  displayName: 'Generar configuración en tiempo de construcción'
+  inputs:
+    targetType: 'inline'
+    script: |
+      cd helpdesk-gateway
+      
+      # Determinar el entorno basado en la rama
+      if [ "$(Build.SourceBranchName)" == "main" ]; then
+        ENV="production"
+        API_URL="https://api.helpdesk-example.com"
+      else
+        ENV="staging"
+        API_URL="https://staging-api.helpdesk-example.com"
+      fi
+      
+      # Crear configuración para este entorno
+      CONFIG='{
+        "api": {
+          "baseUrl": "'$API_URL'",
+          "timeout": 30000
+        },
+        "n8n": {
+          "webhookUrl": "https://n8n.advancio.io/webhook"
+        },
+        "auth": {
+          "tokenKey": "helpdesk-auth"
+        },
+        "env": "'$ENV'"
+      }'
+      
+      # Guardar en la carpeta public para que se empaquete con la build
+      echo $CONFIG > public/config.json
+      
+      echo "Configuración generada para entorno: $ENV"
+      cat public/config.json
+
+- script: |
+    cd helpdesk-gateway
+    npm run build
+  displayName: 'Construir aplicación'
+
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: 'helpdesk-gateway/dist'
+    includeRootFolder: false
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/helpdesk-gateway.zip'
+    replaceExistingArchive: true
+  displayName: 'Comprimir distribución'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/helpdesk-gateway.zip'
+    ArtifactName: 'helpdesk-gateway'
+  displayName: 'Publicar artefacto'
+
+# Documentación de despliegue
+- task: Bash@3
+  displayName: 'Generar README de despliegue'
+  inputs:
+    targetType: 'inline'
+    script: |
+      cat > $(Build.ArtifactStagingDirectory)/frontend-deploy-instructions.md << EOL
+      # Instrucciones de despliegue del Frontend (estilo Clojure)
+      
+      Este artefacto sigue los principios funcionales para separar código y configuración:
+      
+      ## Configuración dinámica en cada ambiente
+      
+      El frontend utiliza un archivo **config.json** en la raíz de la carpeta publicada que puede
+      ser modificado **después del despliegue** sin necesidad de reconstruir la aplicación.
+      
+      ### Para modificar configuración en tiempo de ejecución:
+      
+      1. Desplegar la aplicación normalmente
+      2. Modificar el archivo /config.json en el servidor web
+      
+      ## Ejemplo para Azure Static Web Apps o cualquier CDN:
+      
+      ```json
+      {
+        "api": {
+          "baseUrl": "https://tu-backend-real.com",
+          "timeout": 30000
+        },
+        "n8n": {
+          "webhookUrl": "https://n8n.advancio.io/webhook"
+        },
+        "auth": {
+          "tokenKey": "helpdesk-auth"
+        },
+        "env": "production"
+      }
+      ```
+      
+      Este enfoque permite cambiar fácilmente la configuración:
+      - Sin reconstruir la aplicación
+      - Sin secretos en el código fuente
+      - Siguiendo principios funcionales de separación entre datos y comportamiento
+      EOL
+      
+      # Publicar las instrucciones
+      echo "Instrucciones de despliegue del frontend generadas"
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/frontend-deploy-instructions.md'
+    ArtifactName: 'frontend-deploy-instructions'
+  displayName: 'Publicar instrucciones de despliegue del frontend'
