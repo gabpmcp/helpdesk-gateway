@@ -15,7 +15,7 @@ variables:
   - name: isDev
     value: $[eq(variables['Build.SourceBranchName'], 'develop')]
   - name: workingDirectory
-    value: '$(System.DefaultWorkingDirectory)/helpdesk-gateway'
+    value: '$(System.DefaultWorkingDirectory)'
 
 steps:
 - task: NodeTool@0
@@ -36,7 +36,7 @@ steps:
 - script: |
     npm ci
   displayName: 'Instalar dependencias'
-  workingDirectory: '$(workingDirectory)'
+  workingDirectory: '.'
 
 # Generar config.json dinámico para el entorno específico
 - task: Bash@3
@@ -76,7 +76,7 @@ steps:
       
       echo "Configuración generada para entorno: $ENV"
       cat public/config.json
-    workingDirectory: '$(workingDirectory)'
+    workingDirectory: '.'
 
 # Construir la aplicación con mejor manejo de errores
 - script: |
@@ -105,7 +105,7 @@ steps:
       ls -la dist
     fi
   displayName: 'Construir aplicación'
-  workingDirectory: '$(workingDirectory)'
+  workingDirectory: '.'
 
 # Comprimir solo si existe el directorio dist
 - task: Bash@3
@@ -120,11 +120,11 @@ steps:
       else
         echo "Directorio dist encontrado, listo para comprimir"
       fi
-    workingDirectory: '$(workingDirectory)'
+    workingDirectory: '.'
 
 - task: ArchiveFiles@2
   inputs:
-    rootFolderOrFile: '$(workingDirectory)/dist'
+    rootFolderOrFile: 'dist'
     includeRootFolder: false
     archiveType: 'zip'
     archiveFile: '$(Build.ArtifactStagingDirectory)/helpdesk-gateway.zip'
