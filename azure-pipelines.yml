@@ -14,6 +14,8 @@ pool:
 variables:
   - name: isDev
     value: $[eq(variables['Build.SourceBranchName'], 'develop')]
+  - name: workingDirectory
+    value: '$(System.DefaultWorkingDirectory)/helpdesk-gateway'
 
 steps:
 - task: NodeTool@0
@@ -21,10 +23,20 @@ steps:
     versionSpec: '20.x'
   displayName: 'Instalar Node.js'
 
+# Etapa de diagnóstico para verificar la estructura de directorios
 - script: |
-    cd helpdesk-gateway
+    echo "Mostrando estructura de directorios"
+    ls -la
+    echo "Directorio actual: $(pwd)"
+    echo "Contenido de helpdesk-gateway:"
+    ls -la helpdesk-gateway || echo "No existe el directorio helpdesk-gateway"
+  displayName: 'Diagnóstico de directorios'
+
+# Usar workingDirectory en lugar de cd
+- script: |
     npm ci
   displayName: 'Instalar dependencias'
+  workingDirectory: '$(workingDirectory)'
 
 # Generar config.json dinámico para el entorno específico
 - task: Bash@3
@@ -32,8 +44,6 @@ steps:
   inputs:
     targetType: 'inline'
     script: |
-      cd helpdesk-gateway
-      
       # Determinar el entorno basado en la rama
       if [ "$(Build.SourceBranchName)" == "main" ]; then
         ENV="production"
@@ -58,20 +68,63 @@ steps:
         "env": "'$ENV'"
       }'
       
+      # Crear directorio public si no existe
+      mkdir -p public
+      
       # Guardar en la carpeta public para que se empaquete con la build
       echo $CONFIG > public/config.json
       
       echo "Configuración generada para entorno: $ENV"
       cat public/config.json
+    workingDirectory: '$(workingDirectory)'
 
+# Construir la aplicación con mejor manejo de errores
 - script: |
-    cd helpdesk-gateway
+    # Examinar package.json para ver el comando de build
+    echo "Contenido de package.json (scripts):"
+    grep -A 10 "scripts" package.json
+    
+    # Ejecutar build con detección explícita de errores
+    echo "Ejecutando npm run build..."
     npm run build
+    BUILD_EXIT_CODE=$?
+    
+    if [ $BUILD_EXIT_CODE -ne 0 ]; then
+      echo "##[error]La compilación falló con código de salida: $BUILD_EXIT_CODE"
+      exit $BUILD_EXIT_CODE
+    fi
+    
+    # Verificar si se creó el directorio dist
+    if [ ! -d "dist" ]; then
+      echo "##[error]El directorio dist no se creó después de la compilación"
+      echo "Listando directorios en la raíz del proyecto:"
+      ls -la
+      exit 1
+    else
+      echo "Directorio dist creado correctamente. Contenido:"
+      ls -la dist
+    fi
   displayName: 'Construir aplicación'
+  workingDirectory: '$(workingDirectory)'
+
+# Comprimir solo si existe el directorio dist
+- task: Bash@3
+  displayName: 'Preparar para compresión'
+  inputs:
+    targetType: 'inline'
+    script: |
+      # Verificar si dist existe
+      if [ ! -d "dist" ]; then
+        echo "##[error]El directorio dist no existe. No se puede comprimir."
+        exit 1
+      else
+        echo "Directorio dist encontrado, listo para comprimir"
+      fi
+    workingDirectory: '$(workingDirectory)'
 
 - task: ArchiveFiles@2
   inputs:
-    rootFolderOrFile: 'helpdesk-gateway/dist'
+    rootFolderOrFile: '$(workingDirectory)/dist'
     includeRootFolder: false
     archiveType: 'zip'
     archiveFile: '$(Build.ArtifactStagingDirectory)/helpdesk-gateway.zip'
@@ -90,7 +143,11 @@ steps:
   inputs:
     targetType: 'inline'
     script: |
-      cat > $(Build.ArtifactStagingDirectory)/frontend-deploy-instructions.md << EOL
+      # Crear directorio si no existe
+      mkdir -p $(Build.ArtifactStagingDirectory)
+      
+      # Usar heredoc seguro con -EOF para indentación
+      cat > $(Build.ArtifactStagingDirectory)/frontend-deploy-instructions.md <<-'EOF'
       # Instrucciones de despliegue del Frontend (estilo Clojure)
       
       Este artefacto sigue los principios funcionales para separar código y configuración:
@@ -127,10 +184,15 @@ steps:
       - Sin reconstruir la aplicación
       - Sin secretos en el código fuente
       - Siguiendo principios funcionales de separación entre datos y comportamiento
-      EOL
+      EOF
       
-      # Publicar las instrucciones
-      echo "Instrucciones de despliegue del frontend generadas"
+      # Verificar que el archivo se haya creado correctamente
+      if [ -f "$(Build.ArtifactStagingDirectory)/frontend-deploy-instructions.md" ]; then
+        echo "✅ Instrucciones de despliegue generadas correctamente"
+      else
+        echo "❌ Error al generar instrucciones de despliegue"
+        exit 1
+      fi
 
 - task: PublishBuildArtifacts@1
   inputs:
