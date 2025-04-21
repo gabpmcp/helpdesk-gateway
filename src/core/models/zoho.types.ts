@@ -1,5 +1,5 @@
 import { Map, List, Record as ImmutableRecord } from 'immutable';
-import type { Map as ImmutableMap, List as ImmutableList } from 'immutable';
+import { Map as ImmutableMap, List as ImmutableList } from 'immutable';
 
 // Type definitions for primitive values
 export type ZohoId = string;

@@ -101,7 +101,7 @@ const dashboardProjectionSlice = createSlice({
       })
       .addCase(fetchDashboardProjection.fulfilled, (state, action) => {
         // Convertir el payload a un objeto JavaScript plano de manera segura
-        let jsPayload = {};
+        let jsPayload: any = {};
         
         try {
           // Verificar si es una estructura inmutable y convertirla

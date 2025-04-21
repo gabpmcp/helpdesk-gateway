@@ -6,6 +6,7 @@ import {
   ImmutableComment,
   ZohoCommentInput
 } from '../models/zoho.types';
+import { getBaseUrl } from '../../config';
 
 // Authentication types
 export interface AuthCredentials {
@@ -211,7 +212,7 @@ export const dashboardService = {
   async getDashboardData(email: string): Promise<DashboardData> {
     try {
       // Obtener datos de reportes desde el endpoint de Zoho
-      const reportsResponse = await fetch(`http://localhost:3000/api/zoho/reports-overview`, {
+      const reportsResponse = await fetch(`${getBaseUrl()}/api/zoho/reports-overview`, {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
@@ -277,7 +278,7 @@ export const getTickets = async (filters: Record<string, any> = {}): Promise<any
     
     const queryString = queryParams.toString();
     
-    const response = await fetch(`http://localhost:3000/api/tickets${queryString ? `?${queryString}` : ''}`, {
+    const response = await fetch(`${getBaseUrl()}/api/tickets${queryString ? `?${queryString}` : ''}`, {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
@@ -299,7 +300,7 @@ export const getTickets = async (filters: Record<string, any> = {}): Promise<any
 
 export const getTicketById = async (ticketId: string): Promise<any> => {
   try {
-    const response = await fetch(`http://localhost:3000/api/tickets/${ticketId}`, {
+    const response = await fetch(`${getBaseUrl()}/api/tickets/${ticketId}`, {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
@@ -321,7 +322,7 @@ export const getTicketById = async (ticketId: string): Promise<any> => {
 
 export const createTicket = async (ticketData: Record<string, any>): Promise<any> => {
   try {
-    const response = await fetch('http://localhost:3000/api/tickets', {
+    const response = await fetch(`${getBaseUrl()}/api/tickets`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -345,7 +346,7 @@ export const createTicket = async (ticketData: Record<string, any>): Promise<any
 
 export const updateTicketStatus = async (ticketId: string, status: string): Promise<any> => {
   try {
-    const response = await fetch(`http://localhost:3000/api/tickets/${ticketId}`, {
+    const response = await fetch(`${getBaseUrl()}/api/tickets/${ticketId}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: {
@@ -384,7 +385,7 @@ export const addTicketComment = async (
         formData.append('attachments', file);
       });
       
-      response = await fetch(`http://localhost:3000/api/tickets/${ticketId}/comments`, {
+      response = await fetch(`${getBaseUrl()}/api/tickets/${ticketId}/comments`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -395,7 +396,7 @@ export const addTicketComment = async (
       });
     } else {
       // Sin archivos adjuntos, enviar como JSON
-      response = await fetch(`http://localhost:3000/api/tickets/${ticketId}/comments`, {
+      response = await fetch(`${getBaseUrl()}/api/tickets/${ticketId}/comments`, {
         method: 'POST',
         credentials: 'include',
         headers: {
