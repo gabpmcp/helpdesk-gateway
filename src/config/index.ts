@@ -123,4 +123,13 @@ export async function useConfig(): Promise<ImmutableMap<string, any>> {
   return configState;
 }
 
-export default { initConfig, getConfig, useConfig };
+/**
+ * Devuelve el baseUrl actual de la API.
+ * Lanza error si la configuración no está inicializada.
+ */
+export function getBaseUrl(): string {
+  const config = getConfig();
+  return config.getIn(['api', 'baseUrl']) || config.get('baseUrl') || 'http://localhost:3000';
+}
+
+export default { initConfig, getConfig, useConfig, getBaseUrl };
