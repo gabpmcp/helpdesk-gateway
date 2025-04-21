@@ -3,9 +3,7 @@ trigger:
     include:
       - main
       - develop
-  paths:
-    include:
-      - helpdesk-gateway/*
+
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -16,6 +14,7 @@ variables:
     value: $[eq(variables['Build.SourceBranchName'], 'develop')]
   - name: workingDirectory
     value: '$(System.DefaultWorkingDirectory)'
+  - group: variables-dev
 
 steps:
 - task: NodeTool@0
@@ -47,7 +46,7 @@ steps:
       # Determinar el entorno basado en la rama
       if [ "$(Build.SourceBranchName)" == "main" ]; then
         ENV="production"
-        API_URL="https://api.helpdesk-example.com"
+        API_URL='$(API_URL)'
       else
         ENV="staging"
         API_URL="https://staging-api.helpdesk-example.com"
@@ -56,14 +55,14 @@ steps:
       # Crear configuración para este entorno
       CONFIG='{
         "api": {
-          "baseUrl": "'$API_URL'",
+          "baseUrl": '$(API_URL)',
           "timeout": 30000
         },
         "n8n": {
           "webhookUrl": "https://n8n.advancio.io/webhook"
         },
         "auth": {
-          "tokenKey": "helpdesk-auth"
+          "tokenKey": '$(ZOHO_AUTH_TOKEN)'
         },
         "env": "'$ENV'"
       }'
