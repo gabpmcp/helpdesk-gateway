@@ -95,6 +95,7 @@ export async function initConfig(): Promise<ImmutableMap<string, any>> {
   } else {
     console.log('🚀 Modo producción: Cargando configuración desde /public/config.json');
     config = await loadProductionConfig();
+    console.log('Configuración cargada:', JSON.stringify(config, null, 2)); // Imprimir la configuración cargada con formato
   }
   
   // Convertir a estructura inmutable según los principios de diseño
