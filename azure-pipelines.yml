@@ -1,21 +1,20 @@
 trigger:
   branches:
     include:
-    - main
-    - develop
-  paths:
-    include:
-    - helpdesk-gateway/*
+      - main
+      - develop
+
 
 pool:
   vmImage: 'ubuntu-latest'
 
 # Definir variables que serán diferentes en cada ambiente
 variables:
-- name: isDev
-  value: $[eq(variables['Build.SourceBranchName'], 'develop')]
-- name: workingDirectory
-  value: '$(System.DefaultWorkingDirectory)'
+  - name: isDev
+    value: $[eq(variables['Build.SourceBranchName'], 'develop')]
+  - name: workingDirectory
+    value: '$(System.DefaultWorkingDirectory)'
+  - group: variables-dev
 
 steps:
 - task: NodeTool@0
@@ -47,33 +46,33 @@ steps:
       # Determinar el entorno basado en la rama
       if [ "$(Build.SourceBranchName)" == "main" ]; then
         ENV="production"
-        API_URL="http://localhost:3000"
+        API_URL='$(API_URL)'
       else
         ENV="staging"
-        API_URL="http://localhost:3000"
+        API_URL="https://staging-api.helpdesk-example.com"
       fi
-
+      
       # Crear configuración para este entorno
       CONFIG='{
         "api": {
-          "baseUrl": "'$API_URL'",
+          "baseUrl": "'$(API_URL)'",
           "timeout": 30000
         },
         "n8n": {
           "webhookUrl": "https://n8n.advancio.io/webhook"
         },
         "auth": {
-          "tokenKey": "helpdesk-auth"
+          "tokenKey": "'$(ZOHO_AUTH_TOKEN)'"
         },
         "env": "'$ENV'"
       }'
-
+      
       # Crear directorio public si no existe
       mkdir -p public
-
+      
       # Guardar en la carpeta public para que se empaquete con la build
       echo $CONFIG > public/config.json
-
+      
       echo "Configuración generada para entorno: $ENV"
       cat public/config.json
     workingDirectory: '.'
@@ -83,17 +82,17 @@ steps:
     # Examinar package.json para ver el comando de build
     echo "Contenido de package.json (scripts):"
     grep -A 10 "scripts" package.json
-
+    
     # Ejecutar build con detección explícita de errores
     echo "Ejecutando npm run build..."
     npm run build
     BUILD_EXIT_CODE=$?
-
+    
     if [ $BUILD_EXIT_CODE -ne 0 ]; then
       echo "##[error]La compilación falló con código de salida: $BUILD_EXIT_CODE"
       exit $BUILD_EXIT_CODE
     fi
-
+    
     # Verificar si se creó el directorio dist
     if [ ! -d "dist" ]; then
       echo "##[error]El directorio dist no se creó después de la compilación"
@@ -145,25 +144,25 @@ steps:
     script: |
       # Crear directorio si no existe
       mkdir -p $(Build.ArtifactStagingDirectory)
-
+      
       # Usar heredoc seguro con -EOF para indentación
       cat > $(Build.ArtifactStagingDirectory)/frontend-deploy-instructions.md <<-'EOF'
       # Instrucciones de despliegue del Frontend (estilo Clojure)
-
+      
       Este artefacto sigue los principios funcionales para separar código y configuración:
-
+      
       ## Configuración dinámica en cada ambiente
-
+      
       El frontend utiliza un archivo **config.json** en la raíz de la carpeta publicada que puede
       ser modificado **después del despliegue** sin necesidad de reconstruir la aplicación.
-
+      
       ### Para modificar configuración en tiempo de ejecución:
-
+      
       1. Desplegar la aplicación normalmente
       2. Modificar el archivo /config.json en el servidor web
-
+      
       ## Ejemplo para Azure Static Web Apps o cualquier CDN:
-
+      
       ```json
       {
         "api": {
@@ -179,13 +178,13 @@ steps:
         "env": "production"
       }
       ```
-
+      
       Este enfoque permite cambiar fácilmente la configuración:
       - Sin reconstruir la aplicación
       - Sin secretos en el código fuente
       - Siguiendo principios funcionales de separación entre datos y comportamiento
       EOF
-
+      
       # Verificar que el archivo se haya creado correctamente
       if [ -f "$(Build.ArtifactStagingDirectory)/frontend-deploy-instructions.md" ]; then
         echo "✅ Instrucciones de despliegue generadas correctamente"
