@@ -1,6 +1,7 @@
 // Centralized configuration for Zoho API
 import { Map } from 'immutable';
 import { ZohoConfig } from '../../core/models/zoho.types';
+import { getRuntimeConfig } from '../../config/runtimeConfig';
 
 // Type definition for immutable config
 type ImmutableZohoConfig = Map<string, string>;
@@ -10,13 +11,14 @@ type ImmutableZohoConfig = Map<string, string>;
  * @returns A tuple with [isValid, missingVars]
  */
 const validateEnvVars = (): [boolean, string[]] => {
+  const runtimeConfig = getRuntimeConfig();
   const requiredVars = [
     'VITE_ZOHO_ORGANIZATION_ID',
     'VITE_ZOHO_API_TOKEN',
     'VITE_ZOHO_BASE_URL',
   ];
   
-  const missingVars = requiredVars.filter(varName => !import.meta.env[varName]);
+  const missingVars = requiredVars.filter(varName => !runtimeConfig.zoho[varName]);
   return [missingVars.length === 0, missingVars];
 };
 
@@ -26,6 +28,7 @@ const validateEnvVars = (): [boolean, string[]] => {
  * @throws Error if required environment variables are missing
  */
 export const getZohoConfig = (): ZohoConfig => {
+  const runtimeConfig = getRuntimeConfig();
   const [isValid, missingVars] = validateEnvVars();
   
   if (!isValid) {
@@ -36,9 +39,9 @@ export const getZohoConfig = (): ZohoConfig => {
   
   // Create immutable config map
   const immutableConfig = Map({
-    organizationId: import.meta.env.VITE_ZOHO_ORGANIZATION_ID || '',
-    apiToken: import.meta.env.VITE_ZOHO_API_TOKEN || '',
-    baseUrl: import.meta.env.VITE_ZOHO_BASE_URL || '',
+    organizationId: runtimeConfig.zoho.organizationId || '',
+    apiToken: runtimeConfig.zoho.apiToken || '',
+    baseUrl: runtimeConfig.zoho.baseUrl || '',
   });
   
   // Convert to regular object for compatibility with existing code
@@ -55,6 +58,7 @@ export const getZohoConfig = (): ZohoConfig => {
  * @throws Error if required environment variables are missing
  */
 export const getImmutableZohoConfig = (): ImmutableZohoConfig => {
+  const runtimeConfig = getRuntimeConfig();
   const [isValid, missingVars] = validateEnvVars();
   
   if (!isValid) {
@@ -64,8 +68,8 @@ export const getImmutableZohoConfig = (): ImmutableZohoConfig => {
   }
   
   return Map({
-    organizationId: import.meta.env.VITE_ZOHO_ORGANIZATION_ID || '',
-    apiToken: import.meta.env.VITE_ZOHO_API_TOKEN || '',
-    baseUrl: import.meta.env.VITE_ZOHO_BASE_URL || '',
+    organizationId: runtimeConfig.zoho.organizationId || '',
+    apiToken: runtimeConfig.zoho.apiToken || '',
+    baseUrl: runtimeConfig.zoho.baseUrl || '',
   });
 };

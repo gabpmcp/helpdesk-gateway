@@ -1,5 +1,5 @@
 import { Map as ImmutableMap, List, fromJS } from 'immutable';
-import { apiClient } from './apiClient';
+import { getApiClient } from './apiClient';
 import { 
   ImmutableUser, 
   ImmutableTicket, 
@@ -69,7 +69,7 @@ export const authService = {
   // Login using command pattern
   async login(credentials: AuthCredentials): Promise<AuthResponse> {
     try {
-      const response = await apiClient.post('/api/auth/login', credentials);
+      const response = await getApiClient().post<ImmutableMap<string, any>>('/api/auth/login', credentials);
       return {
         user: response.get('user', ImmutableMap()) as ImmutableUser,
         role: response.get('role', 'user') as string,
@@ -84,7 +84,7 @@ export const authService = {
   // Refresh token
   async refreshToken(email: string, refreshToken: string): Promise<AuthResponse> {
     try {
-      const response = await apiClient.post('/api/auth/refresh', { email, refreshToken });
+      const response = await getApiClient().post<ImmutableMap<string, any>>('/api/auth/refresh', { email, refreshToken });
       return {
         user: response.get('user', ImmutableMap()) as ImmutableUser,
         role: response.get('role', 'user') as string,
@@ -99,7 +99,7 @@ export const authService = {
   // Get authentication status
   async getStatus(email: string): Promise<AuthStatus> {
     try {
-      const response = await apiClient.get(`/api/auth/status/${email}`);
+      const response = await getApiClient().get<ImmutableMap<string, any>>(`/api/auth/status/${email}`);
       return {
         email: response.get('email', '') as string,
         lastAuthenticated: response.get('lastAuthenticated', '') as string,
@@ -117,7 +117,7 @@ export const commandService = {
   // Send any command to the backend
   async sendCommand<T>(command: Command): Promise<T> {
     try {
-      const response = await apiClient.post('/api/commands', command);
+      const response = await getApiClient().post<ImmutableMap<string, any>>('/api/commands', command);
       return response.toJS() as T;
     } catch (error) {
       console.error('Command error:', error);
@@ -128,7 +128,7 @@ export const commandService = {
   // Get user state
   async getUserState(email: string): Promise<UserState> {
     try {
-      const response = await apiClient.get(`/api/state/${email}`);
+      const response = await getApiClient().get<ImmutableMap<string, any>>(`/api/state/${email}`);
       return {
         user: response.get('user', ImmutableMap()) as ImmutableUser,
         tickets: response.get('tickets', List()) as List<ImmutableTicket>,

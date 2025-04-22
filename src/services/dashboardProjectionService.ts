@@ -5,15 +5,10 @@
  * following functional, composable, isolated, and stateless (FCIS) principles
  */
 import { Map as ImmutableMap, List, fromJS } from 'immutable';
-import { createApiClient } from '../core/api/apiClient';
+import { apiClient } from '../core/api/apiClient';
 import { ImmutableTicket } from '../core/models/zoho.types';
 
-// Crear un cliente API usando el mismo método que otros servicios
-const apiClient = createApiClient();
-
 // Configuración de URLs - solo para referencia, no la usamos directamente
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-// Endpoint relativo - apiClient ya agrega la URL base configurada
 const DASHBOARD_ENDPOINT = '/projections/overview';
 
 /**
@@ -35,7 +30,7 @@ const isHtmlResponse = (text: string): boolean => {
 const fetchProjection = async <T = any>(endpoint: string): Promise<T> => {
   try {
     console.log(`[Dashboard Service] Fetching projection data from: ${endpoint}`);
-    const response = await apiClient.get(endpoint);
+    const response = await apiClient().get(endpoint);
     
     // Si la respuesta ya viene procesada como Immutable, devolverla directamente
     if (ImmutableMap.isMap(response)) {
@@ -186,22 +181,22 @@ export const fetchDashboardOverview = async (): Promise<ImmutableMap<string, any
     console.log('[Dashboard Service] Fetching dashboard overview from backend API');
     
     // Hacer la petición a través del backend proxy
-    const response = await apiClient.get(DASHBOARD_ENDPOINT);
+    const response = await apiClient().get(DASHBOARD_ENDPOINT);
     
     // Verificar si la respuesta es válida (puede ser un Map de Immutable)
     if (!response) {
       throw new Error('Failed to fetch dashboard data: Empty response');
     }
     
-    // Si la respuesta es un Map de Immutable, devolverla directamente
+    // Si la respuesta es un Map de Immutable, devolverla directamente (cast explícito)
     if (ImmutableMap.isMap(response)) {
       console.log('[Dashboard Service] Successfully retrieved dashboard data');
-      return response;
+      return response as ImmutableMap<string, any>;
     }
     
-    // Si no es un Map, convertirla
+    // Si no es un Map, convertirla y castear
     console.log('[Dashboard Service] Converting response to Immutable Map');
-    return fromJS(response);
+    return fromJS(response) as ImmutableMap<string, any>;
   } catch (error) {
     console.error('[Dashboard Service] Error fetching dashboard overview:', error);
     
@@ -221,8 +216,7 @@ export const fetchDashboardOverview = async (): Promise<ImmutableMap<string, any
         }
       },
       timestamp: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Error fetching dashboard data'
-    });
+    }) as ImmutableMap<string, any>;
   }
 };
 

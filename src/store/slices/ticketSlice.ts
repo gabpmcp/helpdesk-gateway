@@ -5,8 +5,8 @@
  * siguiendo patrones funcionales e inmutables
  */
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { Map as ImmutableMap, List as ImmutableList } from 'immutable';
-import { getBaseUrl } from '../../config';
+import { List, Map as ImmutableMap } from 'immutable';
+import { getRuntimeConfig } from '../../config';
 
 // Definición del tipo RootState aquí para evitar referencias circulares
 export interface RootState {
@@ -15,23 +15,31 @@ export interface RootState {
 }
 
 // Tipos de datos
-export type ImmutableTicket = ImmutableMap<string, any>;
 export type ImmutableComment = ImmutableMap<string, any>;
+
+// Tipos inmutables para tickets
+type ImmutableTicket = ImmutableMap<string, any>;
+type ImmutableTicketList = List<ImmutableTicket>;
 
 // Estado inicial
 interface TicketState {
-  tickets: ImmutableList<ImmutableTicket>;
+  tickets: ImmutableTicketList;
   selectedTicket: ImmutableMap<string, any>;
   loading: boolean;
   error: string | null;
 }
 
 const initialState: TicketState = {
-  tickets: ImmutableList<ImmutableTicket>(),
+  tickets: List<ImmutableTicket>(),
   selectedTicket: ImmutableMap<string, any>(),
   loading: false,
   error: null,
 };
+
+// Helper para obtener la base URL de la API en tiempo de ejecución
+function getApiBaseUrl() {
+  return getRuntimeConfig().api.baseUrl;
+}
 
 // Thunks asíncronos
 export const fetchTickets = createAsyncThunk(
@@ -49,7 +57,7 @@ export const fetchTickets = createAsyncThunk(
       const queryString = queryParams.toString();
       const url = `/api/tickets${queryString ? `?${queryString}` : ''}`;
       
-      const response = await fetch(`${getBaseUrl()}${url}`, {
+      const response = await fetch(`${getApiBaseUrl()}${url}`, {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
@@ -73,7 +81,7 @@ export const fetchTicketById = createAsyncThunk(
   'tickets/fetchTicketById',
   async (ticketId: string, { rejectWithValue }) => {
     try {
-      const response = await fetch(`${getBaseUrl()}/api/tickets/${ticketId}`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/tickets/${ticketId}`, {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
@@ -97,7 +105,7 @@ export const createTicket = createAsyncThunk(
   'tickets/createTicket',
   async (ticketData: Record<string, any>, { rejectWithValue }) => {
     try {
-      const response = await fetch(`${getBaseUrl()}/api/tickets`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/tickets`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -126,7 +134,7 @@ export const updateTicketStatus = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const response = await fetch(`${getBaseUrl()}/api/tickets/${ticketId}`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/tickets/${ticketId}`, {
         method: 'PATCH',
         credentials: 'include',
         headers: {
@@ -174,7 +182,7 @@ export const addTicketComment = createAsyncThunk(
         });
         
         response = await fetch(
-          `${getBaseUrl()}/api/tickets/${ticketId}/comments`,
+          `${getApiBaseUrl()}/api/tickets/${ticketId}/comments`,
           {
             method: 'POST',
             credentials: 'include',
@@ -186,7 +194,7 @@ export const addTicketComment = createAsyncThunk(
           }
         );
       } else {
-        response = await fetch(`${getBaseUrl()}/api/tickets/${ticketId}/comments`, {
+        response = await fetch(`${getApiBaseUrl()}/api/tickets/${ticketId}/comments`, {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -229,8 +237,8 @@ const ticketSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchTickets.fulfilled, (state, action: PayloadAction<any>) => {
-        state.tickets = ImmutableList(
-          (action.payload?.tickets || []).map((ticket: any) => ImmutableMap(ticket)) as any[]
+        state.tickets = List(
+          (action.payload?.tickets || []).map((ticket: any) => ImmutableMap<string, any>(ticket)) as any[]
         );
         state.loading = false;
       })
@@ -245,7 +253,7 @@ const ticketSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchTicketById.fulfilled, (state, action: PayloadAction<any>) => {
-        state.selectedTicket = ImmutableMap(action.payload || {});
+        state.selectedTicket = ImmutableMap<string, any>(action.payload || {});
         state.loading = false;
       })
       .addCase(fetchTicketById.rejected, (state, action) => {
@@ -260,7 +268,7 @@ const ticketSlice = createSlice({
       })
       .addCase(createTicket.fulfilled, (state, action: PayloadAction<any>) => {
         // Añadir el nuevo ticket a la lista de tickets
-        const newTicket = ImmutableMap(action.payload || {}) as ImmutableTicket;
+        const newTicket = ImmutableMap<string, any>(action.payload || {}) as ImmutableTicket;
         state.tickets = state.tickets.unshift(newTicket);
         state.selectedTicket = newTicket;
         state.loading = false;
@@ -277,7 +285,7 @@ const ticketSlice = createSlice({
       })
       .addCase(updateTicketStatus.fulfilled, (state, action: PayloadAction<any>) => {
         // Actualizar el ticket seleccionado
-        state.selectedTicket = ImmutableMap(action.payload || {});
+        state.selectedTicket = ImmutableMap<string, any>(action.payload || {});
         
         // Actualizar el ticket en la lista si existe
         const ticketId = state.selectedTicket.get('id');
@@ -308,7 +316,7 @@ const ticketSlice = createSlice({
       })
       .addCase(addTicketComment.fulfilled, (state, action: PayloadAction<any>) => {
         // Actualizar el ticket seleccionado con el nuevo comentario
-        state.selectedTicket = ImmutableMap(action.payload || {});
+        state.selectedTicket = ImmutableMap<string, any>(action.payload || {}) as ImmutableTicket;
         
         // Actualizar el ticket en la lista si existe
         const ticketId = state.selectedTicket.get('id');
@@ -319,7 +327,7 @@ const ticketSlice = createSlice({
           
           if (index !== -1) {
             state.tickets = state.tickets.set(
-              index, 
+              index,
               state.selectedTicket as ImmutableTicket
             );
           }
@@ -355,7 +363,7 @@ export const selectSelectedTicket = (state: RootState) => state.tickets.selected
 export const selectTicketLoading = (state: RootState) => state.tickets.loading;
 export const selectTicketError = (state: RootState) => state.tickets.error;
 export const selectTicketMessages = (state: RootState) => 
-  state.tickets.selectedTicket.get('messages', ImmutableList());
+  state.tickets.selectedTicket.get('messages', List());
 
 // Exportar reducer
 export default ticketSlice.reducer;

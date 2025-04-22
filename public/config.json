@@ -1,6 +1,6 @@
 {
   "api": {
-    "baseUrl": "https://api.helpdesk-example.com",
+    "baseUrl": "http://localhost:3000",
     "timeout": 30000
   },
   "n8n": {

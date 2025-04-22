@@ -1,5 +1,5 @@
-import { Map, List, fromJS } from 'immutable';
-import { createApiClient } from '../core/api/apiClient';
+import { Map as ImmutableMap, List, fromJS } from 'immutable';
+import { apiClient } from '../core/api/apiClient';
 import {
   transformComment,
   transformCategory,
@@ -35,8 +35,8 @@ import { toImmutableComment, toImmutableCategory, toImmutableFilters } from '../
  * @param value - Valor a verificar
  * @returns true si es un Map de Immutable
  */
-const isImmutableMap = (value: any): value is Map<string, any> => 
-  value && Map.isMap(value);
+const isImmutableMap = (value: any): value is ImmutableMap<string, any> => 
+  value && ImmutableMap.isMap(value);
 
 /**
  * Obtiene un valor seguro de un Map inmutable o retorna un valor por defecto
@@ -75,7 +75,7 @@ const safeErrorLog = (message: string, value: any): void =>
   console.error(message, safeToJS(value));
 
 // Create the API client for backend proxy
-const apiClient = createApiClient();
+// const apiClient = createApiClient();
 
 /**
  * Transform ticket data from API to application format
@@ -83,15 +83,15 @@ const apiClient = createApiClient();
  * @param ticket - Ticket data from API
  * @returns Transformed ticket data
  */
-const transformTicket = (ticket: Map<string, any>): Map<string, any> => {
+const transformTicket = (ticket: ImmutableMap<string, any>): ImmutableMap<string, any> => {
   // Si el ticket es null o undefined, devolver un mapa vacío
-  if (!ticket) return Map({});
+  if (!ticket) return ImmutableMap({});
   
   // Log detallado para depuración
   safeLog('Transforming ticket data:', ticket);
   
   // Crear una estructura básica de ticket con valores por defecto usando safeGet
-  return Map({
+  return ImmutableMap({
     id: safeGet(ticket, 'id', ''),
     subject: safeGet(ticket, 'subject', 'Sin título'),
     description: safeGet(ticket, 'description', ''),
@@ -121,7 +121,7 @@ interface TicketsResponse {
 // Service functions that combine pure logic with API calls
 const authenticateUser = async (email: string, password: string): Promise<string> => {
   try {
-    const response = await apiClient.post('/api/auth/login', { email, password });
+    const response = await apiClient().post('/api/auth/login', { email, password });
     
     // Usar safeGet para acceso seguro al token
     return safeGet(response, 'accessToken', '');
@@ -155,7 +155,7 @@ const getTickets = async (filters: ZohoFilters = {}): Promise<TicketsResponse> =
     console.log(`Fetching tickets with filters: ${JSON.stringify(filters)}`);
     
     // Obtener respuesta del API
-    const response = await apiClient.get(url);
+    const response = await apiClient().get(url);
     
     // Log seguro de respuesta
     safeLog('Tickets response:', response);
@@ -220,7 +220,7 @@ const processTicketsResponse = (response: any): TicketsResponse => {
     .toList();
   
   // Extraer metadatos con valores por defecto
-  const metaData = Map({
+  const metaData = ImmutableMap({
     total: safeGet(immutableResponse, 'total', transformedTickets.size),
     page: safeGet(immutableResponse, 'page', 1),
     timestamp: safeGet(immutableResponse, 'timestamp', new Date().toISOString())
@@ -260,7 +260,7 @@ const getTicketById = async (ticketId: string): Promise<ZohoTicket | null> => {
     console.log(`Fetching ticket by ID: ${ticketId}`);
     
     // Obtener respuesta del API
-    const response = await apiClient.get(`/api/zoho/tickets/${ticketId}`);
+    const response = await apiClient().get(`/api/zoho/tickets/${ticketId}`);
     
     // Pipeline de procesamiento funcional - sin variables mutables
     return processTicketResponse(response, ticketId);
@@ -340,7 +340,7 @@ const getTicketComments = async (ticketId: string): Promise<ZohoComment[]> => {
     console.log(`Fetching comments for ticket: ${ticketId}`);
     
     // Obtener respuesta del API
-    const response = await apiClient.get(`/api/zoho/tickets/${ticketId}/comments`);
+    const response = await apiClient().get(`/api/zoho/tickets/${ticketId}/comments`);
     
     // Procesar la respuesta de forma funcional
     return processCommentsResponse(response, ticketId);
@@ -429,7 +429,7 @@ const addComment = async (ticketId: string, commentData: ZohoCommentInput): Prom
     console.log(`Adding comment to ticket: ${ticketId}`);
     
     // Obtener respuesta del API
-    const response = await apiClient.post(`/api/zoho/tickets/${ticketId}/comments`, commentData);
+    const response = await apiClient().post(`/api/zoho/tickets/${ticketId}/comments`, commentData);
     
     // Procesar la respuesta de forma funcional
     return processAddCommentResponse(response);
@@ -477,7 +477,7 @@ const createTicket = async (ticketData: ZohoTicketInput): Promise<ZohoTicket> =>
     console.log('Enviando datos del ticket al backend:', JSON.stringify(ticketData));
     
     // Obtener respuesta del API
-    const response = await apiClient.post('/api/zoho/tickets', ticketData);
+    const response = await apiClient().post('/api/zoho/tickets', ticketData);
     
     // Log seguro de la respuesta
     safeLog('Respuesta completa del servidor:', response);
@@ -512,18 +512,18 @@ const processCreatedTicketResponse = (response: any): ZohoTicket => {
   
   // Caso 2: Ticket en campo ticket
   if (response.has('ticket')) {
-    const ticketData = safeGet(response, 'ticket', Map());
+    const ticketData = safeGet(response, 'ticket', ImmutableMap());
     // Usar cast explícito para asegurar compatibilidad de tipos
-    const typedData = fromJS(ticketData) as Map<string, any>;
+    const typedData = fromJS(ticketData) as ImmutableMap<string, any>;
     const transformedTicket = transformTicket(typedData);
     return transformedTicket.toJS() as ZohoTicket;
   }
   
   // Caso 3: Ticket en campo data
   if (response.has('data')) {
-    const ticketData = safeGet(response, 'data', Map());
+    const ticketData = safeGet(response, 'data', ImmutableMap());
     // Usar cast explícito para asegurar compatibilidad de tipos
-    const typedData = fromJS(ticketData) as Map<string, any>;
+    const typedData = fromJS(ticketData) as ImmutableMap<string, any>;
     const transformedTicket = transformTicket(typedData);
     return transformedTicket.toJS() as ZohoTicket;
   }
@@ -540,7 +540,7 @@ const processCreatedTicketResponse = (response: any): ZohoTicket => {
 const getDashboardStats = async (): Promise<ZohoDashboardStats> => {
   try {
     // Obtener respuesta del API
-    const response = await apiClient.get('/projections/dashboard/overview');
+    const response = await apiClient().get('/projections/dashboard/overview');
     
     // Log seguro de la respuesta
     safeLog('Dashboard stats response:', response);
@@ -570,7 +570,7 @@ const getDashboardStats = async (): Promise<ZohoDashboardStats> => {
 const getStatuses = async (): Promise<any> => {
   try {
     // Obtener respuesta del API
-    const response = await apiClient.get('/api/zoho/statuses');
+    const response = await apiClient().get('/api/zoho/statuses');
     
     // Log seguro de la respuesta
     safeLog('Statuses response:', response);
@@ -599,19 +599,21 @@ const getCategories = async (): Promise<ZohoCategory[]> => {
     console.log('Fetching Zoho departments/categories...');
     
     // Make the API request through the backend proxy
-    const response = await apiClient.get('/api/zoho/categories');
+    const response = await apiClient().get<ImmutableMap<string, any>>('/api/zoho/categories');
     
     console.log('Raw response structure:', response?.toString().substring(0, 300));
     
     // La respuesta puede tener las categorías bajo la clave 'categories' o 'data'
     let categoriesData;
     if (response && response.has('categories')) {
-      categoriesData = response.get('categories', List());
+      categoriesData = safeGet(response, 'categories', List());
       console.log('Found categories under "categories" key');
     } else if (response && response.has('data')) {
-      categoriesData = response.get('data', List());
+      categoriesData = safeGet(response, 'data', List());
       console.log('Found categories under "data" key');
-    } else {
+    }
+    // Ningún caso válido
+    else {
       console.warn('Unexpected response structure - no categories found:', 
         response?.toString().substring(0, 200));
       return [];
@@ -629,7 +631,7 @@ const getCategories = async (): Promise<ZohoCategory[]> => {
     const immutableCategories = List<ImmutableCategory>(
       categoriesData
         .map((item: any) => {
-          if (!Map.isMap(item)) {
+          if (!ImmutableMap.isMap(item)) {
             console.warn('Item is not a Map:', item);
             return null;
           }
@@ -645,7 +647,7 @@ const getCategories = async (): Promise<ZohoCategory[]> => {
             return null;
           }
           
-          return Map({
+          return ImmutableMap({
             id: id,
             name: name,
             // Store the original data for reference if needed
@@ -675,7 +677,7 @@ const getContacts = async (): Promise<ZohoContact[]> => {
     console.log('Fetching Zoho contacts...');
     
     // Obtener respuesta del API
-    const response = await apiClient.get('/api/zoho/contacts');
+    const response = await apiClient().get('/api/zoho/contacts');
     
     // Log seguro de la respuesta
     safeLog('Raw contacts response:', response);
@@ -753,7 +755,7 @@ const getAccounts = async (): Promise<ZohoAccount[]> => {
     console.log('Fetching accounts from Zoho...');
     
     // Obtener respuesta del API
-    const response = await apiClient.get('/api/zoho/accounts');
+    const response = await apiClient().get('/api/zoho/accounts');
     
     // Log seguro de la respuesta
     safeLog('Raw accounts response:', response);

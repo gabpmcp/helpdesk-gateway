@@ -7,6 +7,7 @@
  */
 
 import { Map as ImmutableMap } from 'immutable';
+import { getRuntimeConfig } from './runtimeConfig';
 
 // Interfaz para la configuración tipada
 export interface AppConfig {
@@ -32,16 +33,16 @@ let configState: ImmutableMap<string, any> | null = null;
 function getDevConfig(): AppConfig {
   return {
     api: {
-      baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+      baseUrl: getRuntimeConfig().api.baseUrl || 'http://localhost:3000',
       timeout: 30000,
     },
     n8n: {
-      webhookUrl: import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://n8n.advancio.io/webhook',
+      webhookUrl: getRuntimeConfig().n8n.webhookUrl || 'https://n8n.advancio.io/webhook',
     },
     auth: {
       tokenKey: 'helpdesk-auth',
     },
-    env: 'development',
+    env: getRuntimeConfig().env,
   };
 }
 
@@ -68,7 +69,7 @@ async function loadProductionConfig(): Promise<AppConfig> {
       auth: {
         tokenKey: config.auth?.tokenKey || 'helpdesk-auth',
       },
-      env: 'production',
+      env: config.env,
     };
   } catch (error) {
     console.error('Error fatal cargando configuración:', error);
@@ -87,7 +88,7 @@ export async function initConfig(): Promise<ImmutableMap<string, any>> {
   let config: AppConfig;
   
   // Determinar si estamos en desarrollo o producción
-  const isDevelopment = import.meta.env.MODE === 'development';
+  const isDevelopment = getRuntimeConfig().env === 'development';
   
   if (isDevelopment) {
     console.log('🔧 Modo desarrollo: Usando variables de entorno Vite');

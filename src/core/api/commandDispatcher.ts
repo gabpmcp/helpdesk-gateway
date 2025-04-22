@@ -1,5 +1,5 @@
-import { Map } from 'immutable';
-import { apiClient } from './apiClient';
+import { Map as ImmutableMap } from 'immutable';
+import { getApiClient } from './apiClient';
 
 /**
  * Command interface for all backend commands
@@ -46,7 +46,7 @@ export const dispatchCommand = async <T>(
   command: Command
 ): Promise<CommandResponse<T>> => {
   try {
-    const response = await apiClient.post('/api/commands', command);
+    const response = await getApiClient().post<ImmutableMap<string, any>>('/api/commands', command);
     
     return {
       type: 'success',

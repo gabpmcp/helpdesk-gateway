@@ -30,59 +30,63 @@ const immutableStateTransformer = (state: any) => {
   return state;
 };
 
-export const store = configureStore({
-  reducer: {
-    app: appReducer,
-    user: userReducer,
-    auth: authReducer,
-    zoho: zohoReducer,
-    dashboardProjection: dashboardProjectionReducer,
-    dashboard: dashboardReducer
-  },
-  middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({
-      serializableCheck: {
-        // Configure serializable check to handle Immutable.js structures
-        isSerializable: (value) => {
-          // Allow Immutable.js structures in state
-          if (isImmutable(value)) {
+const rootReducer = {
+  app: appReducer,
+  user: userReducer,
+  auth: authReducer,
+  zoho: zohoReducer,
+  dashboardProjection: dashboardProjectionReducer,
+  dashboard: dashboardReducer
+};
+
+export function createStore() {
+  return configureStore({
+    reducer: rootReducer,
+    middleware: (getDefaultMiddleware) =>
+      getDefaultMiddleware({
+        serializableCheck: {
+          // Configure serializable check to handle Immutable.js structures
+          isSerializable: (value) => {
+            // Allow Immutable.js structures in state
+            if (isImmutable(value)) {
+              return true;
+            }
+            // Default serializable check for other values
             return true;
-          }
-          // Default serializable check for other values
-          return true;
-        },
-        // Ignore immutable.js structures in actions
-        ignoredActions: [
-          'payload.user', 
-          'payload.token', 
-          'payload.tickets', 
-          'payload.ticket', 
-          'payload.categories', 
-          'payload.stats',
-          'zoho/fetchReportsOverview/fulfilled'
-        ],
-        // Ignore immutable.js structures in state
-        ignoredPaths: [
-          'app.dashboardStats', 
-          'app.tickets', 
-          'app.ticketDetail', 
-          'app.categories',
-          'user.user',
-          'user.authEvents',
-          'auth.tokens',
-          'zoho.data'
-        ]
-      } as any
-    }),
-  // Add DevTools options to handle immutable structures
-  devTools: {
-    stateSanitizer: immutableStateTransformer
-  }
-});
+          },
+          // Ignore immutable.js structures in actions
+          ignoredActions: [
+            'payload.user', 
+            'payload.token', 
+            'payload.tickets', 
+            'payload.ticket', 
+            'payload.categories', 
+            'payload.stats',
+            'zoho/fetchReportsOverview/fulfilled'
+          ],
+          // Ignore immutable.js structures in state
+          ignoredPaths: [
+            'app.dashboardStats', 
+            'app.tickets', 
+            'app.ticketDetail', 
+            'app.categories',
+            'user.user',
+            'user.authEvents',
+            'auth.tokens',
+            'zoho.data'
+          ]
+        } as any
+      }),
+    // Add DevTools options to handle immutable structures
+    devTools: {
+      stateSanitizer: immutableStateTransformer
+    }
+  });
+}
 
 // Infer the `RootState` and `AppDispatch` types from the store itself
-export type RootState = ReturnType<typeof store.getState>;
-export type AppDispatch = typeof store.dispatch;
+export type RootState = ReturnType<ReturnType<typeof createStore>['getState']>;
+export type AppDispatch = ReturnType<typeof createStore>['dispatch'];
 
 // Hooks for typed dispatch and selector
 export const useAppDispatch = () => useDispatch<AppDispatch>();

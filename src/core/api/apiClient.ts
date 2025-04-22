@@ -1,4 +1,4 @@
-import { Map, fromJS } from 'immutable';
+import { getRuntimeConfig } from '../../config/runtimeConfig';
 
 // API configuration type
 export interface ApiConfig {
@@ -6,17 +6,23 @@ export interface ApiConfig {
   defaultHeaders: Record<string, string>;
 }
 
-// Default API configuration
-const defaultConfig: ApiConfig = {
-  baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000',
-  defaultHeaders: {
-    'Content-Type': 'application/json',
-  }
+// API client interface
+export type ApiClient = {
+  get: <T>(endpoint: string, customHeaders?: Record<string, string>) => Promise<T>;
+  post: <T>(endpoint: string, data?: unknown, customHeaders?: Record<string, string>) => Promise<T>;
+  put: <T>(endpoint: string, data?: unknown, customHeaders?: Record<string, string>) => Promise<T>;
+  delete: <T>(endpoint: string, customHeaders?: Record<string, string>) => Promise<T>;
 };
 
 // Create API client with dependency injection
-export const createApiClient = (config: ApiConfig = defaultConfig) => {
-  // Get token from localStorage
+export function getApiClient(): ApiClient {
+  const config = getRuntimeConfig();
+  const baseUrl = config.api.baseUrl;
+  const defaultHeaders = {
+    'Content-Type': 'application/json',
+  };
+
+  // Utility to get token from localStorage
   const getToken = (): string | null => {
     try {
       const authData = localStorage.getItem('auth');
@@ -31,68 +37,54 @@ export const createApiClient = (config: ApiConfig = defaultConfig) => {
     }
   };
 
-  // Check if the endpoint is a Zoho API endpoint that doesn't need auth
-  const isZohoEndpoint = (endpoint: string): boolean => {
-    return endpoint.startsWith('/api/zoho/');
-  };
-
-  // Generic request function
-  const request = async <T>(
-    endpoint: string,
-    method: string,
-    data?: unknown,
-    customHeaders?: Record<string, string>
-  ): Promise<Map<string, any>> => {
-    const url = `${config.baseUrl}${endpoint}`;
+  // Generic request function using fetch
+  async function request<T>(endpoint: string, method: string, data?: unknown, customHeaders?: Record<string, string>): Promise<T> {
+    const url = baseUrl + endpoint;
     const token = getToken();
-    
-    // Only include Authorization header for non-Zoho endpoints
-    const headers = {
-      ...config.defaultHeaders,
-      ...(!isZohoEndpoint(endpoint) && token ? { Authorization: `Bearer ${token}` } : {}),
-      ...customHeaders
+    const headers: Record<string, string> = {
+      ...defaultHeaders,
+      ...(customHeaders || {}),
     };
-    
-    try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        ...(data ? { body: JSON.stringify(data) } : {})
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        throw new Error(errorData.message || `API error: ${response.status}`);
-      }
-      
-      const jsonData = await response.json();
-      return fromJS(jsonData);
-    } catch (error) {
-      console.error(`API error (${method} ${endpoint}):`, error);
-      throw error;
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const options: RequestInit = {
+      method,
+      headers,
+      credentials: 'include',
+    };
+    if (data !== undefined) {
+      options.body = JSON.stringify(data);
     }
-  };
+
+    const response = await fetch(url, options);
+    let responseData;
+    try {
+      responseData = await response.json();
+    } catch (err) {
+      responseData = null;
+    }
+    if (!response.ok) {
+      throw new Error(responseData?.message || `API error: ${response.status}`);
+    }
+    return responseData as T;
+  }
 
   // HTTP methods
-  const get = <T>(endpoint: string, customHeaders?: Record<string, string>): Promise<Map<string, any>> => 
-    request<T>(endpoint, 'GET', undefined, customHeaders);
-  
-  const post = <T>(endpoint: string, data: unknown, customHeaders?: Record<string, string>): Promise<Map<string, any>> => 
-    request<T>(endpoint, 'POST', data, customHeaders);
-  
-  const put = <T>(endpoint: string, data: unknown, customHeaders?: Record<string, string>): Promise<Map<string, any>> => 
-    request<T>(endpoint, 'PUT', data, customHeaders);
-  
-  const del = <T>(endpoint: string, customHeaders?: Record<string, string>): Promise<Map<string, any>> => 
-    request<T>(endpoint, 'DELETE', undefined, customHeaders);
-  
   return {
-    get,
-    post,
-    put,
-    delete: del
+    get: <T>(endpoint: string, customHeaders?: Record<string, string>) => request<T>(endpoint, 'GET', undefined, customHeaders),
+    post: <T>(endpoint: string, data?: unknown, customHeaders?: Record<string, string>) => request<T>(endpoint, 'POST', data, customHeaders),
+    put: <T>(endpoint: string, data?: unknown, customHeaders?: Record<string, string>) => request<T>(endpoint, 'PUT', data, customHeaders),
+    delete: <T>(endpoint: string, customHeaders?: Record<string, string>) => request<T>(endpoint, 'DELETE', undefined, customHeaders),
   };
-};
+}
 
 // Create a default API client instance
-export const apiClient = createApiClient();
+// Lazy initialization pattern to avoid creating the client before config is loaded
+let _apiClient: ApiClient | null = null;
+
+export function apiClient(): ApiClient {
+  if (!_apiClient) {
+    _apiClient = getApiClient();
+  }
+  return _apiClient;
+}

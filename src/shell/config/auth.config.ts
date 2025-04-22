@@ -2,10 +2,10 @@ import { createZohoClient, fetchZohoUser } from '../externalClients/zohoClient';
 import { registerClient } from '../database/clients';
 import { db } from '../database/dbInstance';
 import { getZohoConfig } from './zoho.config';
-import { Map } from 'immutable';
+import { Map as ImmutableMap } from 'immutable';
 import { verifyAndRegisterUser } from '../../core/auth/verifyAndRegisterUser';
 import { authTransition } from '../../core/logic/zohoLogic';
-import { apiClient } from '../../core/api/apiClient';
+import { getApiClient } from '../../core/api/apiClient';
 
 // Create the Zoho client with configuration
 const zohoClient = createZohoClient();
@@ -31,15 +31,15 @@ export const configuredAuthTransition = authTransition(
   configuredFetchZohoUser,
   // Replace direct Supabase call with backend API call
   async (userId: string, command: any, event: any): Promise<any> => {
-    return apiClient.post('/api/commands', {
+    return getApiClient().post<ImmutableMap<string, any>>('/api/commands', {
       type: 'RECORD_AUTH_EVENT',
       userId,
       eventData: event,
       commandData: command,
       timestamp: Date.now()
     }).then(result => {
-      if (result.type === 'failure') {
-        console.error('Error recording auth event:', result.error);
+      if (result.get('type') === 'failure') {
+        console.error('Error recording auth event:', result.get('error'));
       }
       return result;
     });
