@@ -302,31 +302,68 @@ const processTicketResponse = (response: any, ticketId: string): ZohoTicket | nu
  * @returns Datos del ticket o null si no se encuentra
  */
 const extractTicketData = (response: any): any => {
-  // Verificar estructura básica con la utilidad isImmutableMap
-  if (!isImmutableMap(response)) {
-    console.warn('Response is not an Immutable Map');
+  // Verificamos si la respuesta es nula o indefinida
+  if (!response) {
+    console.warn('Response is null or undefined');
     return null;
   }
   
-  // Caso 1: Error explícito - usando safeGet para acceso seguro
-  // Usamos una comparación que TypeScript puede validar correctamente
-  const success = safeGet(response, 'success', null);
-  if (success === false) {
-    safeErrorLog('API returned error:', safeGet(response, 'error', 'Unknown error'));
-    return null;
+  // Determinamos si la respuesta es un objeto Immutable o un objeto JavaScript regular
+  const isImmutableResponse = typeof response.has === 'function';
+  console.log(`Processing ticket response (type: ${isImmutableResponse ? 'Immutable' : 'Regular JS'})`);
+  
+  // Extraer el ticket según la estructura de la respuesta
+  let ticketData;
+  
+  if (isImmutableResponse) {
+    // Caso 1: Verificar si hay una respuesta con éxito explícito (Immutable)
+    const success = safeGet(response, 'success', null);
+    if (success === false) {
+      safeErrorLog('API returned error (Immutable):', safeGet(response, 'error', 'Unknown error'));
+      return null;
+    }
+    
+    // Evaluación de casos en orden de prioridad usando pipeline funcional
+    return (
+      // Caso 1.2: Ticket en campo ticket (Immutable)
+      safeGet(response, 'ticket', null) || 
+      // Caso 1.3: Ticket en campo data (Immutable)
+      (isImmutableMap(safeGet(response, 'data', null)) ? safeGet(response, 'data', null) : null) ||
+      // Caso 1.4: La respuesta misma es el ticket
+      response ||
+      // Ningún caso válido
+      (safeErrorLog('Unexpected Immutable response format:', response), null)
+    );
   }
   
-  // Evaluación de casos en orden de prioridad usando pipeline funcional
-  return (
-    // Caso 2: Ticket en campo ticket
-    safeGet(response, 'ticket', null) || 
-    // Caso 3: Ticket en campo data (si data es un Map)
-    (isImmutableMap(safeGet(response, 'data', null)) ? safeGet(response, 'data', null) : null) ||
-    // Caso 4: La respuesta misma es el ticket (ya verificamos que es Map)
-    response ||
-    // Ningún caso válido
-    (safeErrorLog('Unexpected response format:', response), null)
-  );
+  // Caso 2: Respuesta es un objeto JavaScript regular
+  else {
+    try {
+      // Caso 2.1: Error explícito (JS Regular)
+      if (response.success === false) {
+        console.error('API returned error (JS Regular):', response.error || 'Unknown error');
+        return null;
+      }
+      
+      // Evaluación de casos en orden de prioridad para objetos regulares
+      if ('ticket' in response && response.ticket) {
+        // Caso 2.2: Ticket en campo ticket (JS Regular)
+        console.log('Found ticket in "ticket" field (JS Regular)');
+        return response.ticket;
+      } else if ('data' in response && response.data) {
+        // Caso 2.3: Ticket en campo data (JS Regular)
+        console.log('Found ticket in "data" field (JS Regular)');
+        return response.data;
+      } else {
+        // Caso 2.4: La respuesta misma es el ticket (JS Regular)
+        console.log('Using full response as ticket (JS Regular)');
+        return response;
+      }
+    } catch (error) {
+      console.error('Error processing JS Regular response:', error);
+      return null;
+    }
+  }
 };
 
 /**
@@ -359,62 +396,133 @@ const getTicketComments = async (ticketId: string): Promise<ZohoComment[]> => {
 const processCommentsResponse = (response: any, ticketId: string): ZohoComment[] => {
   // Log para depuración usando utilidad segura
   safeLog('Raw comments response:', response);
+  
+  // Verificar si tenemos una respuesta
+  if (!response) {
+    console.warn('No comments response received');
+    return [];
+  }
+  
+  console.log('Procesando respuesta de comentarios. Tipo:', typeof response);
+  
+  // CASO 1: Respuesta es un array (formato común)
+  if (Array.isArray(response)) {
+    console.log(`Se recibió un array con ${response.length} elementos como respuesta de comentarios`);
+    
+    // CASO 1.1: Formato de workflow n8n [{ comments: [ {...}, {...} ] }]
+    if (response.length > 0 && response[0] && response[0].comments && Array.isArray(response[0].comments)) {
+      console.log(`Se encontraron ${response[0].comments.length} comentarios en formato workflow n8n`);
+      
+      return response[0].comments.map((comment: any) => procesarDatosComentario(comment));
+    }
+    
+    // CASO 1.2: El array mismo contiene los comentarios directamente
+    console.log('Procesando array como lista directa de comentarios');
+    return response.map((comment: any) => procesarDatosComentario(comment));
+  }
+  
+  // CASO 2: Respuesta es un objeto JS regular
+  if (typeof response === 'object' && response !== null && !(typeof response.has === 'function')) {
+    console.log('Procesando respuesta de comentarios como objeto JS regular');
+    
+    // CASO 2.1: Tiene un campo 'comments' con array
+    if ('comments' in response && Array.isArray(response.comments)) {
+      console.log(`Se encontraron ${response.comments.length} comentarios en campo comments (JS regular)`);
+      return response.comments.map((comment: any) => procesarDatosComentario(comment));
+    }
+    
+    // CASO 2.2: Tiene un campo 'data' con array
+    if ('data' in response && Array.isArray(response.data)) {
+      console.log(`Se encontraron ${response.data.length} comentarios en campo data (JS regular)`);
+      return response.data.map((comment: any) => procesarDatosComentario(comment));
+    }
+    
+    // CASO 2.3: El objeto mismo es un comentario único
+    if ('id' in response || 'comment' in response) {
+      console.log('La respuesta parece ser un comentario único (JS regular)');
+      return [procesarDatosComentario(response)];
+    }
+  }
+  
+  // CASO 3: Respuesta es un objeto Immutable
+  if (typeof response.has === 'function') {
+    console.log('Procesando respuesta de comentarios como objeto Immutable');
+    
+    // CASO 3.1: Verificar error explícito
+    const success = safeGet(response, 'success', null);
+    if (success === false) {
+      console.error('Failed to fetch comments (Immutable):', safeGet(response, 'error', 'Invalid response format'));
+      return [];
+    }
+    
+    // CASO 3.2: Comentarios en campo 'comments'
+    if (response.has('comments')) {
+      const commentsData = safeGet(response, 'comments', List());
+      
+      if (List.isList(commentsData)) {
+        console.log(`Se encontraron ${commentsData.size} comentarios en campo comments (Immutable)`);
+        return commentsData
+          .map((comment: any) => transformComment(comment))
+          .toJS() as ZohoComment[];
+      }
+    }
+    
+    // CASO 3.3: Comentarios en campo 'data'
+    if (response.has('data')) {
+      const commentsData = safeGet(response, 'data', List());
+      
+      if (List.isList(commentsData)) {
+        console.log(`Se encontraron ${commentsData.size} comentarios en campo data (Immutable)`);
+        return commentsData
+          .map((comment: any) => transformComment(comment))
+          .toJS() as ZohoComment[];
+      }
+    }
+  }
+  
+  // Si no hemos podido procesar la respuesta hasta aquí, intentamos una conversión de último recurso
+  console.warn('Formato de respuesta de comentarios no reconocido, intentando transformación genérica');
+  try {
+    if (typeof response.toJS === 'function') {
+      const jsData = response.toJS();
+      if (Array.isArray(jsData)) {
+        return jsData.map(procesarDatosComentario);
+      }
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('Error al procesar comentarios:', error);
+    return [];
+  }
+};
 
-  // Caso 1: La respuesta tiene estructura específica del workflow n8n
-  // [{ comments: [ {...}, {...} ] }]
-  if (response && Array.isArray(response) && response.length > 0 && response[0].comments) {
-    console.log(`Se encontraron ${response[0].comments.length} comentarios en formato workflow n8n`);
-    
-    // Mantener los nombres de campos originales (comment, author) sin transformar
-    return response[0].comments.map((comment: any) => ({
-      id: comment.id || '',
-      comment: comment.comment || '', // Mantener el campo 'comment' original
-      author: comment.author || '',    // Mantener el campo 'author' original
-      createdTime: comment.createdTime || '',
-      createdTimestamp: comment.createdTimestamp || 0,
-      ticketId: comment.ticketId || '',
-      isPublic: comment.isPublic || false
-    }));
-  }
+/**
+ * Función auxiliar para procesar datos de un comentario individual
+ * Asegura valores por defecto y campos completos
+ */
+const procesarDatosComentario = (comment: any): ZohoComment => {
+  if (!comment) return {} as ZohoComment;
   
-  // Caso 2: La respuesta tiene un array de comments directamente
-  if (response && Array.isArray(response.comments)) {
-    console.log(`Se encontraron ${response.comments.length} comentarios en formato directo`);
-    
-    // Mantener los nombres de campos originales (comment, author) sin transformar
-    return response.comments.map((comment: any) => ({
-      id: comment.id || '',
-      comment: comment.comment || '', // Mantener el campo 'comment' original
-      author: comment.author || '',    // Mantener el campo 'author' original
-      createdTime: comment.createdTime || '',
-      createdTimestamp: comment.createdTimestamp || 0,
-      ticketId: comment.ticketId || '',
-      isPublic: comment.isPublic || false
-    }));
-  }
+  // Leer valores seguros con valores por defecto
+  const fecha = comment.createdTime || new Date().toISOString();
+  const autor = comment.author || comment.authorName || comment.userName || 'Usuario';
+  const contenido = comment.comment || comment.content || comment.text || '';
+  const id = comment.id || `temp-${Date.now()}`;
   
-  // Verificación esencial usando isImmutableMap para el formato anterior
-  if (!isImmutableMap(response)) {
-    console.warn('Comments response is not an Immutable Map');
-    return [];
-  }
+  // Formato de fecha y timestamp para ordenamiento
+  const createdTimestamp = comment.createdTimestamp || 
+                         (fecha ? new Date(fecha).getTime() : Date.now());
   
-  // Verificar éxito de la operación con acceso seguro
-  const success = safeGet(response, 'success', null);
-  if (success === false) {
-    console.error('Failed to fetch comments: Invalid response format');
-    return [];
-  }
-  
-  // Extraer y transformar comentarios con acceso seguro
-  const comments = safeGet(response, 'comments', List())
-    .map((comment: any) => transformComment(fromJS(comment)))
-    .toList();
-  
-  console.log(`Successfully processed ${comments.size} comments for ticket ${ticketId}`);
-  
-  // Conversión segura a formato JS
-  return comments.toJS() as ZohoComment[];
+  return {
+    id,
+    comment: contenido,
+    author: autor,
+    createdTime: fecha,
+    createdTimestamp,
+    ticketId: comment.ticketId || '',
+    isPublic: comment.isPublic !== false // por defecto público
+  };
 };
 
 /**
@@ -432,10 +540,19 @@ const addComment = async (ticketId: string, commentData: ZohoCommentInput): Prom
     const response = await apiClient().post(`/api/zoho/tickets/${ticketId}/comments`, commentData);
     
     // Procesar la respuesta de forma funcional
-    return processAddCommentResponse(response);
+    const processedComment = processAddCommentResponse(response);
+    
+    // Verificar que el comentario tiene información básica
+    if (!processedComment || !processedComment.id) {
+      console.error('Comment created but with incomplete data:', processedComment);
+      throw new Error('No se pudo obtener la información del comentario creado');
+    }
+    
+    return processedComment;
   } catch (error) {
     console.error(`Error adding comment to ticket ${ticketId}:`, error);
-    return {} as ZohoComment; // Valor por defecto en caso de error (programación defensiva)
+    // Propagar el error en lugar de devolver un objeto vacío
+    throw error;
   }
 };
 
@@ -448,24 +565,71 @@ const processAddCommentResponse = (response: any): ZohoComment => {
   // Log seguro de la respuesta
   safeLog('Add comment response:', response);
   
-  // Verificación básica de la respuesta
-  if (!isImmutableMap(response)) {
-    console.warn('Add comment response is not an Immutable Map');
-    return {} as ZohoComment;
+  // Verificar si tenemos una respuesta válida
+  if (!response) {
+    console.warn('No response received from add comment');
+    throw new Error('No se recibió respuesta al añadir el comentario');
   }
   
-  // Verificar éxito de la operación
-  const success = safeGet(response, 'success', null);
-  if (success === false) {
-    console.error('Failed to add comment:', safeGet(response, 'error', 'Invalid response format'));
-    return {} as ZohoComment;
+  // Determinar si la respuesta es un objeto Immutable o un objeto JavaScript regular
+  const isImmutableResponse = typeof response.has === 'function';
+  console.log(`Processing add comment response (type: ${isImmutableResponse ? 'Immutable' : 'Regular JS'})`);
+  
+  // CASO 1: Respuesta es un objeto Immutable
+  if (isImmutableResponse) {
+    // Verificar éxito de la operación (Immutable)
+    const success = safeGet(response, 'success', null);
+    if (success === false) {
+      console.error('Failed to add comment (Immutable):', safeGet(response, 'error', 'Invalid response format'));
+      throw new Error(safeGet(response, 'error', 'Error al añadir el comentario'));
+    }
+    
+    // CASO 1.1: Comentario en campo 'comment' (Immutable)
+    if (response.has('comment')) {
+      const commentData = safeGet(response, 'comment', ImmutableMap());
+      return transformComment(commentData).toJS() as ZohoComment;
+    }
+    
+    // CASO 1.2: Comentario en campo 'data' (Immutable)
+    if (response.has('data')) {
+      const commentData = safeGet(response, 'data', ImmutableMap());
+      return transformComment(commentData).toJS() as ZohoComment;
+    }
+    
+    // CASO 1.3: Toda la respuesta es el comentario (Immutable)
+    console.log('Using full Immutable response as comment data');
+    return transformComment(response).toJS() as ZohoComment;
   }
   
-  // Transformar el comentario
-  const immutableComment = transformComment(fromJS(safeToJS(response)));
-  
-  // Devolver el comentario creado
-  return immutableComment.toJS() as ZohoComment;
+  // CASO 2: Respuesta es un objeto JavaScript regular
+  else {
+    try {
+      // Verificar éxito de la operación (JS Regular)
+      if (response.success === false) {
+        console.error('Failed to add comment (JS Regular):', response.error || 'Invalid response format');
+        throw new Error(response.error || 'Error al añadir el comentario');
+      }
+      
+      // CASO 2.1: Comentario en campo 'comment' (JS Regular)
+      if ('comment' in response && response.comment) {
+        console.log('Found comment in "comment" field (JS Regular)');
+        return transformComment(fromJS(response.comment)).toJS() as ZohoComment;
+      }
+      
+      // CASO 2.2: Comentario en campo 'data' (JS Regular)
+      if ('data' in response && response.data) {
+        console.log('Found comment in "data" field (JS Regular)');
+        return transformComment(fromJS(response.data)).toJS() as ZohoComment;
+      }
+      
+      // CASO 2.3: Toda la respuesta es el comentario (JS Regular)
+      console.log('Using full JS regular response as comment data');
+      return transformComment(fromJS(response)).toJS() as ZohoComment;
+    } catch (error) {
+      console.error('Error processing JS Regular comment response:', error);
+      throw new Error('Error al procesar la respuesta del comentario');
+    }
+  }
 };
 
 /**
@@ -483,11 +647,20 @@ const createTicket = async (ticketData: ZohoTicketInput): Promise<ZohoTicket> =>
     safeLog('Respuesta completa del servidor:', response);
     
     // Procesar la respuesta de forma funcional
-    return processCreatedTicketResponse(response);
+    const processedTicket = processCreatedTicketResponse(response);
+    
+    // Verificar que tenemos un ticket válido con ID antes de devolverlo
+    if (!processedTicket || !processedTicket.id) {
+      console.error('Ticket creado sin ID o incompleto:', processedTicket);
+      throw new Error('No se pudo obtener la información del ticket creado');
+    }
+    
+    return processedTicket;
   } catch (error) {
     console.error('Error creating ticket:', error);
-    // Devolver un objeto vacío en caso de error (programación defensiva)
-    return {} as ZohoTicket;
+    // En lugar de retornar un objeto vacío, lanzamos la excepción
+    // para que el código que llama pueda manejarla adecuadamente
+    throw error;
   }
 };
 
@@ -497,40 +670,87 @@ const createTicket = async (ticketData: ZohoTicketInput): Promise<ZohoTicket> =>
  * @returns Ticket creado procesado
  */
 const processCreatedTicketResponse = (response: any): ZohoTicket => {
-  // Verificación básica de la respuesta
-  if (!isImmutableMap(response)) {
-    console.warn('Ticket creation response is not an Immutable Map');
-    return {} as ZohoTicket;
+  // Verificar si tenemos una respuesta válida
+  if (!response) {
+    console.warn('No response received from ticket creation');
+    throw new Error('No se recibió respuesta del servidor');
   }
   
-  // Caso 1: Verificar si hay una respuesta con éxito explícito
-  const success = safeGet(response, 'success', null);
-  if (success === false) {
-    console.error('Error creating ticket:', safeGet(response, 'error', 'Unknown error'));
-    return {} as ZohoTicket;
+  // Verificar si la respuesta es un objeto Immutable o un objeto JavaScript regular
+  const isImmutableResponse = typeof response.has === 'function';
+  console.log(`Procesando respuesta de ticket (tipo: ${isImmutableResponse ? 'Immutable' : 'Regular JS'})`);
+  
+  // Extraer el ticket según la estructura de la respuesta
+  let ticketData;
+  
+  if (isImmutableResponse) {
+    // Caso 1: Verificar si hay una respuesta con éxito explícito (Immutable)
+    const success = safeGet(response, 'success', null);
+    if (success === false) {
+      console.error('Error creating ticket:', safeGet(response, 'error', 'Unknown error'));
+      throw new Error(safeGet(response, 'error', 'Error desconocido al crear el ticket'));
+    }
+    
+    // Caso 2: Ticket en campo ticket (Immutable)
+    if (response.has('ticket')) {
+      ticketData = safeGet(response, 'ticket', ImmutableMap());
+    } 
+    // Caso 3: Ticket en campo data (Immutable)
+    else if (response.has('data')) {
+      ticketData = safeGet(response, 'data', ImmutableMap());
+    }
+    // Caso 4: La respuesta misma es el ticket (Immutable)
+    else {
+      console.warn('Estructura Immutable no reconocida, intentando usar toda la respuesta');
+      ticketData = response;
+    }
+  } else {
+    // Caso 1: Verificar si hay una respuesta con éxito explícito (JS Regular)
+    if (response.success === false) {
+      console.error('Error creating ticket:', response.error || 'Unknown error');
+      throw new Error(response.error || 'Error desconocido al crear el ticket');
+    }
+    
+    // Caso 2: Ticket en campo ticket (JS Regular)
+    if ('ticket' in response) {
+      ticketData = fromJS(response.ticket);
+    } 
+    // Caso 3: Ticket en campo data (JS Regular)
+    else if ('data' in response) {
+      ticketData = fromJS(response.data);
+    }
+    // Caso 4: La respuesta misma es el ticket (JS Regular)
+    else {
+      console.warn('Estructura JS Regular no reconocida, intentando usar toda la respuesta');
+      ticketData = fromJS(response);
+    }
   }
   
-  // Caso 2: Ticket en campo ticket
-  if (response.has('ticket')) {
-    const ticketData = safeGet(response, 'ticket', ImmutableMap());
-    // Usar cast explícito para asegurar compatibilidad de tipos
-    const typedData = fromJS(ticketData) as ImmutableMap<string, any>;
-    const transformedTicket = transformTicket(typedData);
+  // Si no pudimos extraer datos del ticket, lanzar un error
+  if (!ticketData) {
+    console.error('No se pudo extraer datos de ticket de la respuesta:', response);
+    throw new Error('No se pudo extraer la información del ticket creado');
+  }
+  
+  try {
+    // Transformar el ticket según si es Immutable o no
+    let transformedTicket;
+    
+    if (ImmutableMap.isMap(ticketData)) {
+      // Ya es un objeto Immutable
+      transformedTicket = transformTicket(ticketData as ImmutableMap<string, any>);
+    } else {
+      // Convertir a Immutable si no lo es ya
+      const immutableData = fromJS(ticketData) as ImmutableMap<string, any>;
+      transformedTicket = transformTicket(immutableData);
+    }
+    
+    // Convertir el resultado a objeto JavaScript plano
     return transformedTicket.toJS() as ZohoTicket;
+  } catch (error) {
+    console.error('Error al transformar datos del ticket:', error);
+    throw new Error('Error al procesar los datos del ticket creado');
   }
-  
-  // Caso 3: Ticket en campo data
-  if (response.has('data')) {
-    const ticketData = safeGet(response, 'data', ImmutableMap());
-    // Usar cast explícito para asegurar compatibilidad de tipos
-    const typedData = fromJS(ticketData) as ImmutableMap<string, any>;
-    const transformedTicket = transformTicket(typedData);
-    return transformedTicket.toJS() as ZohoTicket;
-  }
-  
-  // Caso 4: La respuesta misma es el ticket
-  console.warn('Estructura de respuesta no reconocida, intentando convertir toda la respuesta');
-  return safeToJS(response) as ZohoTicket;
 };
 
 /**
