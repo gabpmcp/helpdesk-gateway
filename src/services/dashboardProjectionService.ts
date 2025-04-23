@@ -8,8 +8,8 @@ import { Map as ImmutableMap, List, fromJS } from 'immutable';
 import { apiClient } from '../core/api/apiClient';
 import { ImmutableTicket } from '../core/models/zoho.types';
 
-// Configuración de URLs - solo para referencia, no la usamos directamente
-const DASHBOARD_ENDPOINT = '/projections/overview';
+// Configuración de URLs - aseguramos usar el backend como proxy
+const DASHBOARD_ENDPOINT = '/api/zoho/reports-overview';
 
 /**
  * Verifica si una respuesta es HTML en lugar de JSON
