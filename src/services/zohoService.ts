@@ -603,26 +603,54 @@ const getCategories = async (): Promise<ZohoCategory[]> => {
     
     console.log('Raw response structure:', response?.toString().substring(0, 300));
     
-    // La respuesta puede tener las categorías bajo la clave 'categories' o 'data'
+    // Manejar tanto objetos Immutable como objetos JavaScript regulares
     let categoriesData;
-    if (response && response.has('categories')) {
-      categoriesData = safeGet(response, 'categories', List());
-      console.log('Found categories under "categories" key');
-    } else if (response && response.has('data')) {
-      categoriesData = safeGet(response, 'data', List());
-      console.log('Found categories under "data" key');
+    
+    // Si response es un objeto Immutable (tiene método has)
+    if (response && typeof response.has === 'function') {
+      if (response.has('categories')) {
+        categoriesData = safeGet(response, 'categories', List());
+        console.log('Found categories under "categories" key (Immutable)');
+      } else if (response.has('data')) {
+        categoriesData = safeGet(response, 'data', List());
+        console.log('Found categories under "data" key (Immutable)');
+      }
+    } 
+    // Si response es un objeto JavaScript regular
+    else if (response && typeof response === 'object') {
+      if ('categories' in response) {
+        // Convertir a Immutable si es necesario
+        categoriesData = fromJS(response.categories);
+        console.log('Found categories under "categories" key (Plain JS)');
+      } else if ('data' in response) {
+        categoriesData = fromJS(response.data);
+        console.log('Found categories under "data" key (Plain JS)');
+      } else {
+        // Intentar usar directamente la respuesta como un array de categorías
+        categoriesData = fromJS(response);
+        console.log('Using full response as categories (Plain JS)');
+      }
     }
+    
     // Ningún caso válido
-    else {
+    if (!categoriesData) {
       console.warn('Unexpected response structure - no categories found:', 
-        response?.toString().substring(0, 200));
+        response instanceof Object ? JSON.stringify(response).substring(0, 200) : String(response).substring(0, 200));
       return [];
     }
     
     console.log('Categories data:', categoriesData?.toString().substring(0, 200));
     
-    if (!categoriesData || !List.isList(categoriesData) || categoriesData.isEmpty()) {
-      console.warn('No valid categories data found');
+    // Verificar si categoriesData es una lista o convertirla si es necesario
+    if (!List.isList(categoriesData)) {
+      console.log('Converting categories data to List');
+      categoriesData = List.isList(categoriesData) ? categoriesData : 
+                       Array.isArray(categoriesData) ? List(categoriesData) : 
+                       List([categoriesData]);
+    }
+    
+    if (categoriesData.isEmpty()) {
+      console.warn('No valid categories data found (empty list)');
       return [];
     }
     
@@ -696,36 +724,78 @@ const getContacts = async (): Promise<ZohoContact[]> => {
  * @returns Array de contactos procesados
  */
 const processContactsResponse = (response: any): ZohoContact[] => {
-  // Verificación básica de la respuesta
-  if (!isImmutableMap(response)) {
-    console.warn('Contacts response is not an Immutable Map');
+  // Verificar si tenemos una respuesta válida
+  if (!response) {
+    console.warn('No contacts response received');
     return [];
   }
   
   // Extraer datos según la estructura de la respuesta
   let contactsData;
   
-  // Caso 1: Contactos en campo 'contacts'
-  if (response.has('contacts')) {
-    contactsData = safeGet(response, 'contacts', List());
-  } 
-  // Caso 2: Contactos en campo 'data'
-  else if (response.has('data')) {
-    contactsData = safeGet(response, 'data', List());
+  // Caso 1: Respuesta es un objeto Immutable
+  if (typeof response.has === 'function') {
+    console.log('Processing Immutable contacts response');
+    // Caso 1.1: Contactos en campo 'contacts'
+    if (response.has('contacts')) {
+      contactsData = safeGet(response, 'contacts', List());
+    } 
+    // Caso 1.2: Contactos en campo 'data'
+    else if (response.has('data')) {
+      contactsData = safeGet(response, 'data', List());
+    }
+    // Ningún caso Immutable válido
+    else {
+      safeErrorLog('Unexpected Immutable contacts response structure:', response);
+      return [];
+    }
+  }
+  // Caso 2: Respuesta es un objeto JavaScript regular
+  else if (typeof response === 'object') {
+    console.log('Processing regular JS contacts response');
+    // Caso 2.1: Contactos en campo 'contacts'
+    if ('contacts' in response) {
+      contactsData = fromJS(response.contacts);
+    } 
+    // Caso 2.2: Contactos en campo 'data'
+    else if ('data' in response) {
+      contactsData = fromJS(response.data);
+    }
+    // Caso 2.3: La respuesta completa es la lista de contactos
+    else {
+      contactsData = fromJS(response);
+    }
   }
   // Ningún caso válido
   else {
-    safeErrorLog('Unexpected contacts response structure:', response);
+    console.warn('Invalid contacts response type:', typeof response);
     return [];
+  }
+  
+  // Asegurar que contactsData sea una List
+  if (!contactsData) {
+    console.warn('No contacts data extracted from response');
+    return [];
+  }
+  
+  // Convertir a List si no lo es
+  if (!List.isList(contactsData)) {
+    console.log('Converting contacts data to List');
+    contactsData = List.isList(contactsData) ? contactsData : 
+                   Array.isArray(contactsData) ? List(contactsData) : 
+                   List([contactsData]);
   }
   
   // Transformar contactos de forma inmutable
   const contacts = contactsData
     .map((contact: any) => {
-      const id = safeGet(contact, 'id', '');
-      const name = safeGet(contact, 'name', '');
-      const email = safeGet(contact, 'email', '');
-      const phone = safeGet(contact, 'phone', '');
+      // Manejar tanto objetos Immutable como regulares
+      const isImmutable = typeof contact.get === 'function';
+      
+      const id = isImmutable ? contact.get('id') : contact.id || '';
+      const name = isImmutable ? contact.get('name') : contact.name || '';
+      const email = isImmutable ? contact.get('email') : contact.email || '';
+      const phone = isImmutable ? contact.get('phone') : contact.phone || '';
       
       // Filtrar contactos inválidos
       if (!id) {
@@ -774,36 +844,78 @@ const getAccounts = async (): Promise<ZohoAccount[]> => {
  * @returns Array de cuentas procesadas
  */
 const processAccountsResponse = (response: any): ZohoAccount[] => {
-  // Verificación básica de la respuesta
-  if (!isImmutableMap(response)) {
-    console.warn('Accounts response is not an Immutable Map');
+  // Verificar si tenemos una respuesta válida
+  if (!response) {
+    console.warn('No accounts response received');
     return [];
   }
   
   // Extraer datos según la estructura de la respuesta
   let accountsData;
   
-  // Caso 1: Cuentas en campo 'accounts'
-  if (response.has('accounts')) {
-    accountsData = safeGet(response, 'accounts', List());
-  } 
-  // Caso 2: Cuentas en campo 'data'
-  else if (response.has('data')) {
-    accountsData = safeGet(response, 'data', List());
+  // Caso 1: Respuesta es un objeto Immutable
+  if (typeof response.has === 'function') {
+    console.log('Processing Immutable accounts response');
+    // Caso 1.1: Cuentas en campo 'accounts'
+    if (response.has('accounts')) {
+      accountsData = safeGet(response, 'accounts', List());
+    } 
+    // Caso 1.2: Cuentas en campo 'data'
+    else if (response.has('data')) {
+      accountsData = safeGet(response, 'data', List());
+    }
+    // Ningún caso Immutable válido
+    else {
+      safeErrorLog('Unexpected Immutable accounts response structure:', response);
+      return [];
+    }
+  }
+  // Caso 2: Respuesta es un objeto JavaScript regular
+  else if (typeof response === 'object') {
+    console.log('Processing regular JS accounts response');
+    // Caso 2.1: Cuentas en campo 'accounts'
+    if ('accounts' in response) {
+      accountsData = fromJS(response.accounts);
+    } 
+    // Caso 2.2: Cuentas en campo 'data'
+    else if ('data' in response) {
+      accountsData = fromJS(response.data);
+    }
+    // Caso 2.3: La respuesta completa es la lista de cuentas
+    else {
+      accountsData = fromJS(response);
+    }
   }
   // Ningún caso válido
   else {
-    safeErrorLog('Unexpected accounts response structure:', response);
+    console.warn('Invalid accounts response type:', typeof response);
     return [];
+  }
+  
+  // Asegurar que accountsData sea una List
+  if (!accountsData) {
+    console.warn('No accounts data extracted from response');
+    return [];
+  }
+  
+  // Convertir a List si no lo es
+  if (!List.isList(accountsData)) {
+    console.log('Converting accounts data to List');
+    accountsData = List.isList(accountsData) ? accountsData : 
+                   Array.isArray(accountsData) ? List(accountsData) : 
+                   List([accountsData]);
   }
   
   // Transformar cuentas de forma inmutable
   const accounts = accountsData
     .map((account: any) => {
-      const id = safeGet(account, 'id', '');
-      const name = safeGet(account, 'name', '');
-      const domain = safeGet(account, 'domain', '');
-      const isActive = safeGet(account, 'isActive', true);
+      // Manejar tanto objetos Immutable como regulares
+      const isImmutable = typeof account.get === 'function';
+      
+      const id = isImmutable ? account.get('id') : account.id || '';
+      const name = isImmutable ? account.get('name') : account.name || '';
+      const domain = isImmutable ? account.get('domain') : account.domain || '';
+      const isActive = isImmutable ? account.get('isActive') : account.isActive !== false;
       
       // Filtrar cuentas inválidas
       if (!id) {
