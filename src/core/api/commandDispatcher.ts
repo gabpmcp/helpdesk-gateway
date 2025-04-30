@@ -46,11 +46,19 @@ export const dispatchCommand = async <T>(
   command: Command
 ): Promise<CommandResponse<T>> => {
   try {
-    const response = await getApiClient().post<ImmutableMap<string, any>>('/api/commands', command);
+    const response = await getApiClient().post<any>('/api/commands', command);
+    
+    // Verificar si la respuesta es un objeto Immutable (tiene método toJS)
+    // o un objeto JavaScript normal
+    const value = typeof response.toJS === 'function' 
+      ? response.toJS() as T 
+      : response as T;
+    
+    console.log('Command response:', value);
     
     return {
       type: 'success',
-      value: response.toJS() as T
+      value
     };
   } catch (error) {
     console.error('Command dispatch error:', error);
@@ -89,4 +97,18 @@ export const createRefreshTokenCommand = (
   'REFRESH_TOKEN',
   email,
   { refreshToken }
+);
+
+/**
+ * Specific register command creator
+ * Creates a REGISTER_USER command with email and password
+ * This will trigger validation against Zoho CRM to ensure the user exists as a contact
+ */
+export const createRegisterCommand = (
+  email: string,
+  password: string
+): Command => createCommand(
+  'REGISTER_USER',
+  email,
+  { password }
 );

@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { Map as ImmutableMap, fromJS } from 'immutable';
-import { dispatchCommand, createLoginCommand, createRefreshTokenCommand } from '../../core/api/commandDispatcher';
+import { dispatchCommand, createLoginCommand, createRefreshTokenCommand, createRegisterCommand } from '../../core/api/commandDispatcher';
 
 // Define the authentication interfaces
 interface AuthTokens {
@@ -15,6 +15,23 @@ interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   error?: string;
+}
+
+// Register response from the backend
+interface RegisterResponse {
+  success: boolean;
+  email: string;
+  message?: string;
+  error?: string;
+  zoho_contact_id?: string;
+  zoho_account_id?: string;
+}
+
+// Social login response
+interface SocialLoginResponse {
+  success: boolean;
+  provider: string;
+  redirectUrl?: string;
 }
 
 // Define the state interface with immutable structures
@@ -67,6 +84,71 @@ export const loginAttempt = createAsyncThunk<
       return rejectWithValue(
         error instanceof Error ? error.message : 'Authentication failed'
       );
+    }
+  }
+);
+
+// Async thunk for social login attempt
+export const socialLoginAttempt = createAsyncThunk<
+  SocialLoginResponse,
+  { provider: string },
+  { rejectValue: string }
+>(
+  'auth/socialLoginAttempt',
+  async ({ provider }, { rejectWithValue }) => {
+    try {
+      // Esta función principalmente marca el estado como isLoading
+      // La autenticación real ocurre a través del cliente de Supabase directamente
+      return {
+        success: true,
+        provider
+      };
+    } catch (error) {
+      return rejectWithValue(
+        error instanceof Error ? error.message : `Social authentication with ${provider} failed`
+      );
+    }
+  }
+);
+
+// Async thunk for registration - validated with Zoho CRM
+export const registerAttempt = createAsyncThunk<
+  RegisterResponse,
+  { email: string; password: string },
+  { rejectValue: { message: string } }
+>(
+  'auth/registerAttempt',
+  async ({ email, password }, { rejectWithValue }) => {
+    try {
+      // Create the register command
+      const registerCommand = createRegisterCommand(email, password);
+      
+      // Dispatch the command to the backend (which will validate against Zoho CRM)
+      const result = await dispatchCommand<RegisterResponse>(registerCommand);
+      
+      // Handle the result
+      if (result.type === 'success') {
+        const response = result.value;
+        
+        // If registration failed on the backend side
+        if (!response.success) {
+          return rejectWithValue({ 
+            message: response.error || 'Registration failed. Email not found in Zoho CRM.'
+          });
+        }
+        
+        return response;
+      } else {
+        return rejectWithValue({ 
+          message: result.error.message || 'Registration failed. Please try again later.'
+        });
+      }
+    } catch (error) {
+      return rejectWithValue({
+        message: error instanceof Error 
+          ? error.message 
+          : 'Registration failed. Please try again later.'
+      });
     }
   }
 );
@@ -170,6 +252,34 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.isAuthenticated = false;
         state.error = action.payload || 'Login failed';
+      })
+      
+      // Social login cases
+      .addCase(socialLoginAttempt.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(socialLoginAttempt.fulfilled, (state) => {
+        // No establecemos estado aquí, ya que la redirección manejará el resultado
+        state.isLoading = true; // Mantenemos loading hasta la redirección
+      })
+      .addCase(socialLoginAttempt.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload || 'Social login failed';
+      })
+      
+      // Registration attempt cases
+      .addCase(registerAttempt.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(registerAttempt.fulfilled, (state) => {
+        state.isLoading = false;
+        // No establecemos como autenticado aquí, ya que el usuario debe iniciar sesión después de registrarse
+      })
+      .addCase(registerAttempt.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload?.message || 'Registration failed';
       })
       
       // Token refresh cases

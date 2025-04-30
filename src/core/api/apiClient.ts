@@ -113,7 +113,7 @@ export function getApiClient(): ApiClient {
     const options: RequestInit = {
       method,
       headers,
-      credentials: 'include',
+      credentials: 'include', // Siempre incluir credenciales
       mode: 'cors'
     };
     
@@ -138,11 +138,13 @@ export function getApiClient(): ApiClient {
     try {
       console.log(`🌐 Iniciando fetch a: ${url}`);
       
-      // Para endpoints específicos que sabemos que tienen problemas con CORS y credenciales,
-      // podemos optar por usar 'same-origin' o 'omit' en lugar de 'include'
-      if (endpoint === '/api/zoho/reports-overview') {
-        console.log(`⚠️ Endpoint sensible a CORS detectado, ajustando configuración`);
-        options.credentials = 'omit'; // Probar primero con 'omit' para ver si resuelve el problema
+      // Para el registro, aseguramos que siempre usamos include
+      if (endpoint === '/api/commands' && 
+          data && 
+          typeof data === 'object' && 
+          (data as any).type === 'REGISTER_USER') {
+        console.log('⚠️ Detectada solicitud de registro, asegurando credenciales include');
+        options.credentials = 'include';
       }
       
       const response = await fetch(url, options);
@@ -151,12 +153,25 @@ export function getApiClient(): ApiClient {
       console.log(`✅ Respuesta recibida - Status: ${response.status}`);
       
       try {
-        responseData = await response.json();
+        // Intentar parsear como JSON, pero manejar respuestas no-JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          responseData = await response.json();
+        } else {
+          // Si no es JSON, obtenemos el texto
+          const textData = await response.text();
+          console.warn(`⚠️ Respuesta no es JSON: ${textData}`);
+          // Convertir a un objeto para mantener consistencia
+          responseData = { message: textData, isRawText: true };
+        }
+        
         console.log(`📊 Datos recibidos:`, typeof responseData === 'object' ? 
           JSON.stringify(responseData).substring(0, 200) + '...' : responseData);
       } catch (err) {
-        console.error(`❌ Error al parsear respuesta JSON:`, err);
-        responseData = null;
+        console.error(`❌ Error al parsear respuesta:`, err);
+        const textData = await response.text();
+        console.warn(`⚠️ Contenido de respuesta: ${textData}`);
+        responseData = { message: 'Respuesta no pudo ser procesada', error: true };
       }
       
       if (!response.ok) {
@@ -170,6 +185,12 @@ export function getApiClient(): ApiClient {
       console.error(`❌ URL que falló: ${url}`);
       console.error(`❌ Método: ${method}`);
       console.error(`❌ Headers:`, JSON.stringify({...headers, Authorization: token ? '**REDACTED**' : undefined}));
+      
+      // Si el error es CORS, mostrar un mensaje más descriptivo
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        throw new Error('Error de conexión - Posible problema CORS o servidor no disponible');
+      }
+      
       throw error;
     }
   }

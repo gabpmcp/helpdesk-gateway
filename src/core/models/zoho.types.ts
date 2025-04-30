@@ -35,6 +35,7 @@ export interface ZohoCategoryRecord {
   id: ZohoId;
   name: string;
   translationKey?: string;
+  articleCount?: number;
 }
 
 export interface ZohoContactRecord {
@@ -132,7 +133,8 @@ export const CommentRecord = ImmutableRecord<ZohoCommentRecord>({
 export const CategoryRecord = ImmutableRecord<ZohoCategoryRecord>({
   id: '',
   name: '',
-  translationKey: undefined
+  translationKey: undefined,
+  articleCount: undefined
 });
 
 export const ContactRecord = ImmutableRecord<ZohoContactRecord>({
@@ -240,6 +242,7 @@ export interface ZohoCategory {
   id: string;
   name: string;
   translationKey?: string;
+  articleCount?: number;
 }
 
 export interface ZohoContact {

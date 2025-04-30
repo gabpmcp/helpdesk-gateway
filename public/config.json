@@ -6,6 +6,10 @@
   "n8n": {
     "webhookUrl": "https://n8n.advancio.io/webhook"
   },
+  "supabase": {
+    "url": "https://mydasjsnoz4thjloga.supabase.co",
+    "key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im15ZGFzanNub3o0dGhqbG9nYSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNjM3MjMxOTIsImV4cCI6MTk1MjgwNzkyfQ.5O2C_JZVC2AvR4GHM9Ckz739SDiFCfn0Hu1617O4dOE"
+  },
   "auth": {
     "tokenKey": "helpdesk-auth"
   },

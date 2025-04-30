@@ -17,4 +17,7 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    exclude: ['chunk-UU72K32D'], // Excluir el paquete problemático del optimizador
+  },
 }));

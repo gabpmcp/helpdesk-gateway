@@ -12,16 +12,17 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Mail, Lock, Github, CircleUser } from 'lucide-react';
+import { Loader2, Mail, Lock, CircleUser } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
 export const LoginForm: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { login, isLoading } = useAuth();
+  const { login, loginWithSocial } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,13 +36,41 @@ export const LoginForm: React.FC = () => {
       return;
     }
     
-    // Usar el hook de autenticación
-    login(email, password);
+    setIsLoading(true);
     
-    // La navegación a dashboard se realiza después del login exitoso
-    setTimeout(() => {
+    try {
+      // Usar el hook de autenticación
+      await login(email, password);
+      
+      // La navegación a dashboard se realiza después del login exitoso
       navigate('/');
-    }, 1000);
+    } catch (error) {
+      console.error('Login error:', error);
+      toast({
+        title: "Error de autenticación",
+        description: error instanceof Error ? error.message : "No se pudo iniciar sesión",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSocialLogin = async (provider: 'google') => {
+    setIsLoading(true);
+    
+    try {
+      await loginWithSocial(provider);
+      // La navegación se manejará después de la redirección
+    } catch (error) {
+      console.error(`${provider} login error:`, error);
+      toast({
+        title: "Error de autenticación",
+        description: `No se pudo iniciar sesión con ${provider}`,
+        variant: "destructive",
+      });
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -117,13 +146,14 @@ export const LoginForm: React.FC = () => {
           </div>
 
           <div className="mt-4 flex gap-2">
-            <Button variant="outline" className="w-full">
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              onClick={() => handleSocialLogin('google')}
+              disabled={isLoading}
+            >
               <CircleUser className="mr-2 h-4 w-4" />
               Google
-            </Button>
-            <Button variant="outline" className="w-full">
-              <Github className="mr-2 h-4 w-4" />
-              GitHub
             </Button>
           </div>
         </div>
@@ -132,8 +162,11 @@ export const LoginForm: React.FC = () => {
         <div className="text-center text-sm text-muted-foreground">
           Don't have an account?{' '}
           <Button variant="link" className="h-auto p-0" onClick={() => navigate('/register')}>
-            Contact your administrator
+            Register
           </Button>
+        </div>
+        <div className="text-xs text-center text-muted-foreground mt-1">
+          Only users with a valid Zoho CRM contact can register
         </div>
       </CardFooter>
     </Card>

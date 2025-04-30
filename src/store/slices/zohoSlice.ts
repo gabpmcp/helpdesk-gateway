@@ -178,62 +178,89 @@ export const selectTicketsByStatusData = (state: { zoho: ZohoReportsState }) => 
   })).toJS();
 };
 
-// Derived selectors for specific data
+// Derived selectors for specific data - sin fallback para propagar los errores correctamente
 export const selectTicketsByPriority = (state: { zoho: ZohoReportsState }, priority: string) => {
   const data = state.zoho.data;
-  if (!data) return 0;
+  if (!data) throw new Error('No hay datos disponibles de tickets por prioridad');
   
-  // Try to get from the new metrics structure
-  const fromMetrics = data.getIn(['metrics', 'ticketsByPriority', priority], 0);
-  if (fromMetrics) return fromMetrics;
+  // Obtener directamente de la estructura de métricas, sin fallbacks
+  const value = data.getIn(['metrics', 'ticketsByPriority', priority]);
+  if (value === undefined) {
+    throw new Error(`No se encontraron datos para la prioridad: ${priority}`);
+  }
   
-  // Fallback to older data structure if available
-  return data.get(`${priority.toLowerCase()}PriorityTicketsCount`, 0);
+  return value;
 };
 
 export const selectTicketsByStatus = (state: { zoho: ZohoReportsState }, status: string) => {
   const data = state.zoho.data;
-  if (!data) return 0;
+  if (!data) throw new Error('No hay datos disponibles de tickets por estado');
   
-  // Try to get from the new metrics structure
-  const fromMetrics = data.getIn(['metrics', 'ticketsByStatus', status], 0);
-  if (fromMetrics) return fromMetrics;
+  // Obtener directamente de la estructura de métricas, sin fallbacks
+  const value = data.getIn(['metrics', 'ticketsByStatus', status]);
+  if (value === undefined) {
+    throw new Error(`No se encontraron datos para el estado: ${status}`);
+  }
   
-  // Fallback to older data structure if available
-  return data.get(`${status.toLowerCase()}TicketsCount`, 0);
+  return value;
 };
 
 export const selectTicketCount = (state: { zoho: ZohoReportsState }) => {
   const data = state.zoho.data;
-  if (!data) return 0;
+  if (!data) throw new Error('No hay datos disponibles de conteo de tickets');
   
-  return data.get('ticketCount', 0);
+  const count = data.get('ticketCount');
+  if (count === undefined) {
+    throw new Error('No se encontró el contador de tickets en los datos');
+  }
+  
+  return count;
 };
 
 export const selectOpenTicketCount = (state: { zoho: ZohoReportsState }) => {
   const data = state.zoho.data;
-  if (!data) return 0;
+  if (!data) throw new Error('No hay datos disponibles de tickets abiertos');
   
-  return data.get('openTicketCount', 0);
+  const count = data.get('openTicketCount');
+  if (count === undefined) {
+    throw new Error('No se encontró el contador de tickets abiertos en los datos');
+  }
+  
+  return count;
 };
 
 export const selectUrgentTicketCount = (state: { zoho: ZohoReportsState }) => {
   const data = state.zoho.data;
-  if (!data) return 0;
+  if (!data) throw new Error('No hay datos disponibles de tickets urgentes');
   
-  return data.get('urgentTicketCount', 0);
+  const count = data.get('urgentTicketCount');
+  if (count === undefined) {
+    throw new Error('No se encontró el contador de tickets urgentes en los datos');
+  }
+  
+  return count;
 };
 
 export const selectResponseTimeAvg = (state: { zoho: ZohoReportsState }) => {
   const data = state.zoho.data;
-  if (!data) return 0;
+  if (!data) throw new Error('No hay datos disponibles de tiempo de respuesta');
   
-  return data.get('responseTimeAvg', 0);
+  const avg = data.get('responseTimeAvg');
+  if (avg === undefined) {
+    throw new Error('No se encontró el tiempo promedio de respuesta en los datos');
+  }
+  
+  return avg;
 };
 
 export const selectSatisfactionScore = (state: { zoho: ZohoReportsState }) => {
   const data = state.zoho.data;
-  if (!data) return 0;
+  if (!data) throw new Error('No hay datos disponibles de satisfacción');
   
-  return data.get('satisfactionScore', 0);
+  const score = data.get('satisfactionScore');
+  if (score === undefined) {
+    throw new Error('No se encontró la puntuación de satisfacción en los datos');
+  }
+  
+  return score;
 };
